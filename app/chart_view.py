@@ -1,50 +1,68 @@
-"""Main area: shows the view selected in the Explorer, drawn with TradingView Lightweight Charts."""
-from nicegui import ui
+"""Main area: shows the view selected in the Explorer, drawn with pyqtgraph."""
+import pyqtgraph as pg
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QPainter, QPicture
+from PySide6.QtWidgets import QLabel, QStackedWidget, QVBoxLayout, QWidget
 
-LIGHTWEIGHT_CHARTS = 'https://unpkg.com/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js'
-
-# Browser-side helper: replaces any previous chart with an empty dark candlestick chart.
-RENDER_JS = '''
-<script>
-window.renderCandles = (id) => {
-  const el = document.getElementById(id);
-  if (!el || !window.LightweightCharts) { requestAnimationFrame(() => renderCandles(id)); return; }
-  if (window.activeChart) window.activeChart.remove();
-  const chart = LightweightCharts.createChart(el, {
-    autoSize: true,
-    layout: { background: { type: 'solid', color: '#131722' }, textColor: '#d1d4dc' },
-    grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
-    rightPriceScale: { borderColor: '#2a2e39' },
-    timeScale: { borderColor: '#2a2e39' },
-  });
-  chart.addSeries(LightweightCharts.CandlestickSeries, {
-    upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
-    wickUpColor: '#26a69a', wickDownColor: '#ef5350',
-  });
-  window.activeChart = chart;
-};
-</script>
-'''
+BACKGROUND = '#131722'
+GRID_TEXT = '#d1d4dc'
+UP = '#26a69a'
+DOWN = '#ef5350'
 
 
-def add_chart_library() -> None:
-    ui.add_head_html(f'<script src="{LIGHTWEIGHT_CHARTS}"></script>{RENDER_JS}')
+class CandlestickItem(pg.GraphicsObject):
+    """Draws candles from (time, open, high, low, close) rows. Empty until data is loaded."""
 
-
-class ChartView:
     def __init__(self) -> None:
-        self.container = ui.column().classes('w-full h-full p-3 gap-2')
-        self.show(None, None, '1D')
+        super().__init__()
+        self.picture = QPicture()
 
-    def show(self, symbol: str | None, view: str | None, timeframe: str) -> None:
-        self.container.clear()
-        with self.container:
-            if symbol is None:
-                with ui.column().classes('w-full h-full items-center justify-center text-gray-500'):
-                    ui.icon('candlestick_chart', size='4rem')
-                    ui.label('Search a symbol to begin')
-                return
+    def set_data(self, rows: list[tuple[float, float, float, float, float]], width: float) -> None:
+        self.picture = QPicture()
+        painter = QPainter(self.picture)
+        for time, open_, high, low, close in rows:
+            color = pg.mkColor(UP if close >= open_ else DOWN)
+            painter.setPen(pg.mkPen(color))
+            painter.drawLine(QPointF(time, low), QPointF(time, high))
+            painter.setBrush(pg.mkBrush(color))
+            painter.drawRect(QRectF(time - width / 2, open_, width, close - open_))
+        painter.end()
+        self.prepareGeometryChange()
+        self.update()
 
-            ui.label(f'{symbol} · {view.capitalize()} · {timeframe}').classes('text-base font-semibold')
-            chart = ui.element('div').classes('w-full grow rounded border border-[#2a2e39]')
-            ui.run_javascript(f'renderCandles("c{chart.id}")')
+    def paint(self, painter, *args) -> None:
+        painter.drawPicture(0, 0, self.picture)
+
+    def boundingRect(self) -> QRectF:
+        return QRectF(self.picture.boundingRect())
+
+
+class ChartView(QStackedWidget):
+    def __init__(self) -> None:
+        super().__init__()
+
+        placeholder = QLabel('Search a symbol to begin')
+        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        placeholder.setObjectName('placeholder')
+        self.addWidget(placeholder)
+
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        self.title = QLabel()
+        self.title.setObjectName('chartTitle')
+        layout.addWidget(self.title)
+
+        self.plot = pg.PlotWidget(axisItems={'bottom': pg.DateAxisItem()}, background=BACKGROUND)
+        self.plot.showGrid(x=True, y=True, alpha=0.15)
+        self.plot.hideAxis('left')
+        self.plot.showAxis('right')  # price on the right, like trading platforms
+        for axis in ('right', 'bottom'):
+            self.plot.getAxis(axis).setTextPen(GRID_TEXT)
+        self.candles = CandlestickItem()
+        self.plot.addItem(self.candles)
+        layout.addWidget(self.plot)
+        self.addWidget(page)
+
+    def show_view(self, symbol: str, view: str, timeframe: str) -> None:
+        self.title.setText(f'{symbol} · {view.capitalize()} · {timeframe}')
+        self.setCurrentIndex(1)

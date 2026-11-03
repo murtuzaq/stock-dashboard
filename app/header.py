@@ -1,29 +1,49 @@
 """Top bar: app name, symbol search and timeframe selector."""
-from typing import Callable
-
-from nicegui import ui
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QButtonGroup, QLabel, QLineEdit, QToolBar, QToolButton, QWidget, QSizePolicy
 
 # Candle sizes. Only daily candles will be downloaded; the rest are built from them.
 TIMEFRAMES = ['1D', '1W', '2W', '1M', '3M']
 
 
-def build_header(on_search: Callable[[str], None], on_timeframe: Callable[[str], None]) -> None:
-    with ui.header().classes('h-14 items-center gap-6 px-4 bg-[#131722] border-b border-[#2a2e39]'):
-        ui.label('Stock Dashboard').classes('text-lg font-semibold')
+class Header(QToolBar):
+    symbol_searched = Signal(str)
+    timeframe_changed = Signal(str)
 
-        search = ui.input(placeholder='Search symbol (e.g. AAPL)') \
-            .props('dense outlined dark clearable input-class="uppercase"') \
-            .classes('w-64')
+    def __init__(self) -> None:
+        super().__init__('Top bar')
+        self.setMovable(False)
 
-        def submit() -> None:
-            symbol = (search.value or '').strip().upper()
-            if symbol:
-                on_search(symbol)
-                search.value = ''
+        title = QLabel('Stock Dashboard')
+        title.setObjectName('appTitle')
+        self.addWidget(title)
+        self.addSeparator()
 
-        search.on('keydown.enter', submit)
-        with search.add_slot('prepend'):
-            ui.icon('search')
+        self.search = QLineEdit()
+        self.search.setPlaceholderText('Search symbol (e.g. AAPL)')
+        self.search.setClearButtonEnabled(True)
+        self.search.setFixedWidth(240)
+        self.search.returnPressed.connect(self._submit)
+        self.addWidget(self.search)
+        self.addSeparator()
 
-        ui.toggle(TIMEFRAMES, value=TIMEFRAMES[0], on_change=lambda e: on_timeframe(e.value)) \
-            .props('dense no-caps toggle-color=primary')
+        self.timeframes = QButtonGroup(self)
+        self.timeframes.setExclusive(True)
+        for timeframe in TIMEFRAMES:
+            button = QToolButton()
+            button.setText(timeframe)
+            button.setCheckable(True)
+            button.setChecked(timeframe == TIMEFRAMES[0])
+            self.timeframes.addButton(button)
+            self.addWidget(button)
+        self.timeframes.buttonClicked.connect(lambda button: self.timeframe_changed.emit(button.text()))
+
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.addWidget(spacer)
+
+    def _submit(self) -> None:
+        symbol = self.search.text().strip().upper()
+        if symbol:
+            self.symbol_searched.emit(symbol)
+            self.search.clear()

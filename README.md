@@ -1,10 +1,10 @@
 # stock-dashboard
 
-A personal dashboard for learning to trade stocks: search symbols, explore them in a tree,
-and view TradingView-style charts.
+A personal desktop dashboard for learning to trade stocks: search symbols, explore them in a tree,
+and view trading-platform-style charts.
 
-Built with [NiceGUI](https://nicegui.io) (Python UI in the browser) and
-[TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts).
+Built with [PySide6](https://doc.qt.io/qtforpython-6/) (Qt desktop UI) and
+[pyqtgraph](https://www.pyqtgraph.org/) (fast interactive charts).
 
 ## Setup (Git Bash)
 
@@ -20,7 +20,7 @@ pip install -r requirements.txt
 python app/main.py
 ```
 
-Then open http://localhost:8080.
+The dashboard opens in its own window.
 
 ## Layout
 
