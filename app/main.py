@@ -20,6 +20,11 @@ QHeaderView::section { background: #131722; color: #787b86; border: none; paddin
 QSplitter::handle { background: #2a2e39; }
 QLabel#placeholder { color: #787b86; font-size: 16px; }
 QLabel#chartTitle { font-size: 14px; font-weight: 600; }
+QPushButton#scopeChip { background: #2962ff; color: white; border: none; border-radius: 4px; padding: 5px 10px; }
+QPushButton#scopeChip:hover { background: #1e53e5; }
+QTreeWidget#searchResults { background: #1e222d; border: 1px solid #2a2e39; border-radius: 4px; padding: 4px; }
+QTreeWidget#searchResults::item { height: 26px; }
+QTreeWidget#searchResults::item:selected { background: #2a2e39; color: #d1d4dc; }
 '''
 
 
