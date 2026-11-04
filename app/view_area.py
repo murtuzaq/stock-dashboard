@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QSplitter, QSt
 
 from atr_view import AtrView
 from chart_view import DOWN, UP, CandleChart, TimePlot
-from explorer import VIEWS
+from explorer import STRATEGY_PREFIX, VIEWS
 from growth_view import GrowthView
 from history_view import HistoryView
 from macd_view import MacdView
@@ -21,13 +21,19 @@ from prices import DEFAULT_RANGE, RANGE_NAMES, RANGES, load_daily, range_change,
 from rel_strength_view import BENCHMARK, RelStrengthView
 from sma_view import SmaLines, SmaView
 from stoch_rsi_view import StochRsiView
+from strategy import repository
+from strategy.backtest import run as run_backtest, strategy_hash
+from strategy_view import StrategyView
+from trade_overlay import TradeOverlay
 from volume_view import VolumeView
 
 # Share of the height each view gets when stacked (price charts get more room than indicators).
 HEIGHT_WEIGHTS = {'price': 3, 'candles': 3, 'sma': 3, 'volume': 2, 'macd': 2, 'stoch_rsi': 2, 'atr': 2,
-                  'rel_strength': 2, 'growth': 3, 'history': 3}
+                  'rel_strength': 2, 'growth': 3, 'strategy': 4, 'history': 3}
 # Charts the moving averages are drawn on when SMA is selected together with them.
 SMA_HOSTS = ('price', 'candles')
+# Charts that get BUY/SELL arrows and entry lines; the others get signal lines.
+PRICE_CHARTS = ('price', 'candles', 'sma')
 
 
 def chart_of(widget: QWidget) -> TimePlot | None:
@@ -37,16 +43,21 @@ def chart_of(widget: QWidget) -> TimePlot | None:
 
 class ViewArea(QStackedWidget):
     _history_loaded = Signal(str, object, object)  # symbol, daily DataFrame, S&P 500 daily DataFrame
+    edit_strategy = Signal(str)  # strategy id (from the results panel's "Edit rules…" button)
 
     def __init__(self) -> None:
         super().__init__()
         self.symbol: str | None = None
         self.selected: list[str] = []
+        self.shown: list[str] = []  # selected views that get their own panel
         self.candle_size = '1D'
         self.range = DEFAULT_RANGE
         self.daily: dict[str, pd.DataFrame] = {}  # downloaded history, kept for this session
         self.benchmark = pd.DataFrame()
         self.candles = pd.DataFrame()
+        self.start: pd.Timestamp | None = None  # first day of the selected range
+        self.strategy_id: str | None = None  # the strategy selected in the Explorer, if any
+        self._results: dict[tuple, object] = {}  # backtest results by (symbol, rules, candle size, start)
         self._history_loaded.connect(self._on_history_loaded)
 
         placeholder = QLabel('Search a symbol to begin')
@@ -75,8 +86,13 @@ class ViewArea(QStackedWidget):
         # Optional hooks: set_symbol(symbol) and set_benchmark(sp500_daily).
         self.views = {'price': PriceView(), 'candles': CandleChart(), 'sma': SmaView(), 'volume': VolumeView(),
                       'macd': MacdView(), 'stoch_rsi': StochRsiView(), 'atr': AtrView(),
-                      'rel_strength': RelStrengthView(), 'growth': GrowthView(), 'history': HistoryView()}
+                      'rel_strength': RelStrengthView(), 'growth': GrowthView(), 'strategy': StrategyView(),
+                      'history': HistoryView()}
         self.sma_overlays = {key: SmaLines(self.views[key]) for key in SMA_HOSTS}
+        self.trade_overlays = {key: TradeOverlay(chart_of(widget), key in PRICE_CHARTS)
+                               for key, widget in self.views.items() if chart_of(widget) and key != 'strategy'}
+        self.views['strategy'].costs_changed.connect(self._on_costs_changed)
+        self.views['strategy'].edit_requested.connect(self.edit_strategy)
         self.panels = QSplitter(Qt.Orientation.Vertical)
         self.panels.setChildrenCollapsible(False)
         for widget in self.views.values():
@@ -107,16 +123,21 @@ class ViewArea(QStackedWidget):
     # --- what to show ---
 
     def show_views(self, symbol: str, views: list[str], candle_size: str) -> None:
-        labels = dict(VIEWS)
-        self.title.setText(f'{symbol} · {" + ".join(labels[v] for v in views)} · {candle_size}')
-        self.selected = views
+        """Show the selected views; a selected strategy ('strategy:<id>') shows its results panel and trades."""
+        strategy_keys = [v for v in views if v.startswith(STRATEGY_PREFIX)]
+        self.strategy_id = strategy_keys[0].removeprefix(STRATEGY_PREFIX) if strategy_keys else None
+        strategy = repository.get(self.strategy_id) if self.strategy_id else None
+        labels = dict(VIEWS) | ({strategy_keys[0]: f'Strategy "{strategy.name}"'} if strategy else {})
+        self.title.setText(f'{symbol} · {" + ".join(labels.get(v, v) for v in views)} · {candle_size}')
+        self.selected = ['strategy' if v.startswith(STRATEGY_PREFIX) else v for v in views]
         self._arrange_panels()
         self.setCurrentIndex(1)
         for widget in self.views.values():
             if hasattr(widget, 'set_symbol'):
                 widget.set_symbol(symbol)
         if symbol == self.symbol and candle_size == self.candle_size and not self.candles.empty:
-            return  # same data, only the selection changed
+            self.update_strategy()  # same data, only the selection changed
+            return
         self.symbol, self.candle_size = symbol, candle_size
         if symbol in self.daily:
             self._render()
@@ -163,7 +184,7 @@ class ViewArea(QStackedWidget):
         sma_host = next((key for key in self.selected if key in SMA_HOSTS), None) if 'sma' in self.selected else None
         for key, overlay in self.sma_overlays.items():
             overlay.set_visible(key == sma_host)
-        shown = [key for key in self.selected if not (key == 'sma' and sma_host)]
+        self.shown = shown = [key for key in self.selected if not (key == 'sma' and sma_host)]
 
         for key, widget in self.views.items():
             widget.setVisible(key in shown)
@@ -181,10 +202,37 @@ class ViewArea(QStackedWidget):
         if self.candles.empty:
             return
         daily = self.daily[self.symbol]
-        start = range_start(daily.index[-1], daily.index[0], self.range)
+        self.start = start = range_start(daily.index[-1], daily.index[0], self.range)
         for widget in self.views.values():
             widget.set_range(start)
         self._show_header(daily, start)
+        self.update_strategy()
+
+    # --- strategy backtest ---
+
+    def update_strategy(self) -> None:
+        """Backtest the selected strategy (cached) and show its results and trades on the visible charts."""
+        strategy = repository.get(self.strategy_id) if self.strategy_id else None
+        if strategy is None or self.candles.empty or self.start is None:
+            for overlay in self.trade_overlays.values():
+                overlay.clear()
+            return
+        key = (self.symbol, strategy_hash(strategy), self.candle_size, self.start)
+        if key not in self._results:
+            self._results[key] = run_backtest(strategy, self.candles, self.benchmark, self.start, self.symbol)
+        result = self._results[key]
+        self.views['strategy'].show_result(strategy, result)
+        for view_key, overlay in self.trade_overlays.items():
+            if view_key in self.shown:
+                overlay.show(result, self.candles)
+            else:
+                overlay.clear()
+
+    def _on_costs_changed(self, costs) -> None:
+        strategy = repository.get(self.strategy_id)
+        strategy.costs = costs
+        repository.save(strategy)
+        self.update_strategy()
 
     def _show_header(self, daily: pd.DataFrame, start: pd.Timestamp) -> None:
         """Latest close, the change over the selected range (like finance sites), then today's change."""

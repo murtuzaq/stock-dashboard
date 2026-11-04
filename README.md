@@ -103,3 +103,40 @@ with sqlite3.connect('data/prices.db') as db:
 Only daily candles are downloaded. Larger candles are built from them:
 open = first day's open, high = highest high, low = lowest low, close = last day's close.
 1D, 1W and 1M are standard; 2W is our own; 3M is a quarterly candle.
+
+## Strategies and backtesting
+
+Each stock has a **Strategies** folder in the Explorer: the stock's own strategies, then the library
+templates (grey, "· library"), which you can try on any stock.
+
+- **Click a strategy** to backtest it over the selected Range and Candle size: a summary (return vs buy & hold,
+  trades, win rate, max drawdown, time in market), an equity curve against buy & hold, and every trade
+  (signal and fill dates, prices, P/L, exit reason; an open position is shown as unrealized).
+  Capital, commission and slippage are editable on the panel and saved with the strategy.
+- **Ctrl+click Candles, MACD, etc.** to stack them with the strategy: every chart shows the trades
+  (▲ BUY / ▼ SELL at the signal candle, fill dots, entry line, stop/target levels, green/red shading).
+- **Right-click** a stock or the folder: *New Strategy…*. Right-click a strategy: *Edit…, Duplicate,
+  Copy to another stock…, Save to Library, Delete…* (library templates: *Copy to this stock and customise…*).
+- **Strategy Builder** (opens on the right): Start (new, or copy any existing strategy) → Name →
+  BUY rules → SELL rules and exits (stop-loss %, ATR stop, take-profit %) → Review → Save & Backtest.
+  Each rule is *[indicator] [is above / is below / crosses above / crosses below] [indicator or number]*,
+  combined with ALL (AND) or ANY (OR). *Is above/below* holds on every candle; *crosses* happens on one candle
+  (optionally "within the last N candles").
+
+**Backtest assumptions:** signals are judged at a candle's close and trades fill at the next candle's open
+(no look-ahead); fills include slippage and commission; whole shares, all available cash, long only, one position
+at a time; stops and targets are checked inside each candle (gaps fill at the open; if both are hit in one candle,
+the stop is assumed first). Indicators warm up on the full stored history, so SMA 200 is ready from day one of
+the range.
+
+**Files:** strategies are JSON in [strategies/](strategies/) (commit them): `strategies/library/*.json` for
+templates, `strategies/<SYMBOL>/*.json` per stock. A copy is independent of its original and records it in
+`origin_id`. Code: engine in [app/strategy/](app/strategy/) (no GUI: `model`, `catalog`, `signals`, `backtest`,
+`describe`, `repository`); GUI in `app/strategy_view.py`, `app/trade_overlay.py`, `app/strategy_wizard.py`,
+`app/strategy_actions.py`.
+
+## Tests
+
+```bash
+pytest
+```

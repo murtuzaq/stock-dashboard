@@ -7,6 +7,8 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QSplitter
 
 from explorer import Explorer
 from header import TIMEFRAMES, Header
+from strategy_actions import StrategyActions
+from strategy_wizard import StrategyWizard
 from view_area import ViewArea
 
 STYLE = '''
@@ -26,6 +28,12 @@ QLabel#summary { color: #787b86; padding: 2px 0 6px 0; }
 QTableView#historyTable { background: #131722; alternate-background-color: #171b26; border: none; gridline-color: #1e222d; }
 QTableView#historyTable::item:selected { background: #2a2e39; color: #d1d4dc; }
 QLabel#indicatorLegend { font-size: 12px; padding: 2px 4px; }
+QWidget#wizard { background: #171b26; border-left: 1px solid #2a2e39; }
+QFrame#ruleRow { background: #1e222d; border: 1px solid #2a2e39; border-radius: 4px; }
+QComboBox, QSpinBox, QDoubleSpinBox { background: #1e222d; border: 1px solid #2a2e39; border-radius: 3px; padding: 3px 6px; }
+QPushButton { background: #2a2e39; border: none; border-radius: 4px; padding: 5px 12px; }
+QPushButton:hover { background: #363a45; }
+QPushButton:default { background: #2962ff; color: white; }
 QLabel#barLabel { color: #787b86; font-size: 11px; font-weight: 600; padding-right: 4px; }
 QPushButton#scopeChip { background: #2962ff; color: white; border: none; border-radius: 4px; padding: 5px 10px; }
 QPushButton#scopeChip:hover { background: #1e53e5; }
@@ -63,17 +71,30 @@ class MainWindow(QMainWindow):
         self.addToolBar(self.header)
         self.explorer = Explorer()
         self.view_area = ViewArea()
+        self.wizard = StrategyWizard()  # third panel, shown only while creating or editing a strategy
+        self.wizard.hide()
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter = splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.explorer)
         splitter.addWidget(self.view_area)
+        splitter.addWidget(self.wizard)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([240, 1160])
+        splitter.setCollapsible(2, False)
+        splitter.setSizes([240, 1160, 0])
         self.setCentralWidget(splitter)
 
         self.header.symbol_searched.connect(self.explorer.add_symbol)
         self.header.timeframe_changed.connect(self.on_timeframe)
         self.explorer.views_selected.connect(self.on_select)
+        self.strategy_actions = StrategyActions(self)
+
+    def show_wizard(self) -> None:
+        """Open the Strategy Builder as a third panel on the right, taking room from the charts."""
+        explorer, charts, wizard = self.splitter.sizes()
+        if not self.wizard.isVisible() or wizard < self.wizard.minimumWidth():
+            width = max(self.wizard.minimumWidth(), 620)
+            self.wizard.show()
+            self.splitter.setSizes([explorer, max(charts + wizard - width, 300), width])
 
     def on_select(self, symbol: str, views: list[str]) -> None:
         self.symbol, self.views = symbol, views

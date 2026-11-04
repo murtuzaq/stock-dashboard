@@ -6,6 +6,11 @@ CANDLE_RULES = {'1D': None, '1W': 'W-FRI', '2W': '2W-FRI', '1M': 'ME', '3M': 'QE
 # Trading days in one candle, to convert indicator lengths given in days (e.g. 50-day SMA = 10 weekly candles).
 CANDLE_DAYS = {'1D': 1, '1W': 5, '2W': 10, '1M': 21, '3M': 63}
 
+
+def days_to_candles(days: int, candle_size: str) -> int:
+    """A length in trading days expressed in candles, e.g. 50 days on weekly candles = 10 candles."""
+    return max(1, round(days / CANDLE_DAYS[candle_size]))
+
 # History length shown on the chart.
 RANGES = ['1M', '3M', '6M', 'YTD', '1Y', '5Y', '10Y', 'Max']
 DEFAULT_RANGE = '1Y'

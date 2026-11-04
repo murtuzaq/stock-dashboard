@@ -9,15 +9,10 @@ import pyqtgraph as pg
 
 from chart_view import GRID_TEXT, TimePlot
 from indicators import sma
-from prices import CANDLE_DAYS
+from prices import days_to_candles
 
 SMA_DAYS = (50, 150, 200)
 SMA_COLORS = ('#2962ff', '#f7c948', '#e040fb')
-
-
-def sma_length(days: int, candle_size: str) -> int:
-    """A length in trading days expressed in candles, e.g. 50 days on weekly candles = 10 candles."""
-    return max(1, round(days / CANDLE_DAYS[candle_size]))
 
 
 class SmaLines:
@@ -34,7 +29,7 @@ class SmaLines:
         slots = np.arange(len(candles))
         self.legend.clear()
         for line, days in zip(self.lines, SMA_DAYS):
-            length = sma_length(days, candle_size)
+            length = days_to_candles(days, candle_size)
             line.setData(slots, sma(candles['close'], length).to_numpy())
             note = '' if candle_size == '1D' else f' ({length} × {candle_size} candles)'
             self.legend.addItem(line, f'SMA {days}d{note}')

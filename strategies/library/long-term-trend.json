@@ -1,0 +1,95 @@
+{
+  "id": "lib-long-term-trend",
+  "name": "Long-Term Trend",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "sma",
+          "params": {
+            "days": 50
+          }
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 150
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "sma",
+          "params": {
+            "days": 150
+          }
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 50
+          }
+        },
+        "within": 3
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_below",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 150
+          }
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": 10,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-04T00:56:19",
+  "updated": "2026-11-04T00:56:19"
+}

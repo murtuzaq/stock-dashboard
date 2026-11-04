@@ -1,0 +1,71 @@
+{
+  "id": "lib-atr-swing-trade",
+  "name": "ATR Swing Trade",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 50
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "stoch_rsi",
+          "output": "k"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "stoch_rsi",
+          "output": "d"
+        }
+      },
+      {
+        "left": {
+          "indicator": "stoch_rsi",
+          "output": "k"
+        },
+        "op": "below",
+        "right": {
+          "value": 30.0
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "stoch_rsi",
+          "output": "k"
+        },
+        "op": "crosses_below",
+        "right": {
+          "value": 80.0
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": null,
+    "take_profit_pct": 10,
+    "atr_stop_multiple": 2
+  },
+  "costs": {
+    "capital": 7000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-04T00:56:19",
+  "updated": "2026-11-04T07:57:19"
+}

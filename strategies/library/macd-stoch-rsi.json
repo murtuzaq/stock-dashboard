@@ -1,0 +1,85 @@
+{
+  "id": "lib-macd-stoch-rsi",
+  "name": "MACD + Stoch RSI",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "macd",
+          "output": "macd"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "macd",
+          "output": "signal"
+        },
+        "within": 3
+      },
+      {
+        "left": {
+          "indicator": "stoch_rsi",
+          "output": "k"
+        },
+        "op": "below",
+        "right": {
+          "value": 50
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "macd",
+          "output": "macd"
+        },
+        "op": "crosses_below",
+        "right": {
+          "indicator": "macd",
+          "output": "signal"
+        }
+      },
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "below",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": 8,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-04T00:56:19",
+  "updated": "2026-11-04T00:56:19"
+}
