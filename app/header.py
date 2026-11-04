@@ -26,6 +26,10 @@ class Header(QToolBar):
         self.addWidget(self.search)
         self.addSeparator()
 
+        self.candle_label = QLabel('Candle')
+        self.candle_label.setObjectName('barLabel')
+        self.candle_label.setToolTip('How much time each candle covers')
+        self.addWidget(self.candle_label)
         self.timeframes = QButtonGroup(self)
         self.timeframes.setExclusive(True)
         for timeframe in TIMEFRAMES:
