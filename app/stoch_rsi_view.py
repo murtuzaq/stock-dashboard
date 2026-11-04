@@ -3,9 +3,8 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-from chart_view import TimePlot
+from chart_view import PanelView, TimePlot
 from indicators import stoch_rsi
 
 K_COLOR = '#2962ff'
@@ -38,27 +37,15 @@ class OscillatorPlot(TimePlot):
         self.d_line.setData(slots, values['d'].to_numpy())
 
 
-class StochRsiView(QWidget):
+class StochRsiView(PanelView):
     def __init__(self) -> None:
-        super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        self.legend = QLabel()
-        self.legend.setObjectName('indicatorLegend')
-        self.legend.setToolTip('Above 80: overbought (stretched up). Below 20: oversold (stretched down).\n'
-                               'K is the fast line, D is its average. K crossing D can signal a turn.')
-        layout.addWidget(self.legend)
-        self.plot_widget = OscillatorPlot()
-        layout.addWidget(self.plot_widget)
+        super().__init__(OscillatorPlot(), 'Above 80: overbought (stretched up). Below 20: oversold (stretched down).\n'
+                                           'K is the fast line, D is its average. K crossing D can signal a turn.')
 
     def set_data(self, daily: pd.DataFrame, candles: pd.DataFrame) -> None:
         values = stoch_rsi(candles['close'])
         self.plot_widget.set_values(candles.index, values)
         self._show_legend(values)
-
-    def set_range(self, start: pd.Timestamp) -> None:
-        self.plot_widget.set_range(start)
 
     def _show_legend(self, values: pd.DataFrame) -> None:
         latest = values.dropna()

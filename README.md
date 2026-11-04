@@ -29,8 +29,21 @@ The dashboard opens in its own window.
   - **Price** (opens first): closing prices as an area chart, like Google Finance (one point per candle,
     so on 1D it is daily closes). Green if up over the selected range, red if down. Hover for date and close.
   - **Candles**: open/high/low/close as a candlestick chart.
+  - **SMA 50/150/200**: the 50, 150 and 200-day simple moving averages (long-term trend). Alone, drawn over a
+    faint price line; **Ctrl+click it with Price or Candles and the lines are drawn on that chart instead**.
+    On bigger candles the days are converted (50/150/200 days = 10/30/40 weekly candles).
+  - **Volume**: shares traded per candle as bars (green = closed up, red = closed down), with a yellow
+    20-candle average. The legend shows the latest volume as a multiple of that average (e.g. "0.63× average").
+    Big bars on a price move suggest conviction; stack it under Candles to read them together.
   - **Stoch RSI**: the Stochastic RSI indicator (standard settings 14, 14, 3, 3). Above 80 = overbought,
     below 20 = oversold; K is the fast line, D its average. Indicator math lives in [app/indicators/](app/indicators/).
+  - **MACD (12, 26, 9)**: MACD line, signal line and histogram (momentum confirmation).
+  - **ATR (14)**: Average True Range, the typical move per candle in dollars and % of price (risk, stop sizing).
+  - **Rel. Strength**: stock ÷ S&P 500 (Yahoo `^GSPC`), set to 100 at the start of the range. Above 100 = beating
+    the market since then. The legend compares both returns.
+  - **Revenue/EPS Growth**: quarterly and annual revenue and diluted EPS with QoQ/YoY growth (business health).
+    Yahoo provides only ~5 quarters and ~4 years; figures are stored in `data/prices.db` (table `financials`)
+    and refreshed weekly, so the history grows over time.
   - **History**: the same data as a table, newest first (Date, Open, High, Low, Close, Change, Volume),
     with a summary line for the range (high, low). Hover a column header for what it means.
 - **Header:** latest close, then the change over the selected range (e.g. "−14.22% (−41.46) year to date",

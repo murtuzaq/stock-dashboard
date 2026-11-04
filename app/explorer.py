@@ -6,7 +6,9 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem
 
 # Views available under every symbol, in the order they stack. Add RSI, moving averages, etc. here later.
-VIEWS = [('price', 'Price'), ('candles', 'Candles'), ('stoch_rsi', 'Stoch RSI'), ('history', 'History')]
+VIEWS = [('price', 'Price'), ('candles', 'Candles'), ('sma', 'SMA 50/150/200'), ('volume', 'Volume'),
+         ('macd', 'MACD'), ('stoch_rsi', 'Stoch RSI'), ('atr', 'ATR'), ('rel_strength', 'Rel. Strength'),
+         ('growth', 'Revenue/EPS Growth'), ('history', 'History')]
 
 VIEW_ROLE = Qt.ItemDataRole.UserRole
 

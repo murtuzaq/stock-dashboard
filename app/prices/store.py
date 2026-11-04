@@ -25,7 +25,20 @@ CREATE TABLE IF NOT EXISTS symbols (
     symbol     TEXT PRIMARY KEY,
     checked_at REAL NOT NULL     -- when Yahoo was last asked for new rows (Unix time)
 );
+CREATE TABLE IF NOT EXISTS financials (
+    symbol   TEXT NOT NULL,
+    period   TEXT NOT NULL,      -- 'quarterly' or 'annual'
+    end_date TEXT NOT NULL,      -- last day of the quarter or fiscal year, YYYY-MM-DD
+    revenue  REAL,               -- total revenue
+    eps      REAL,               -- diluted earnings per share
+    PRIMARY KEY (symbol, period, end_date)
+) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS financials_checked (
+    symbol     TEXT PRIMARY KEY,
+    checked_at REAL NOT NULL
+);
 '''
+FINANCIAL_COLUMNS = ['revenue', 'eps']
 
 
 def _connect(path: Path = DB_PATH) -> sqlite3.Connection:
@@ -51,12 +64,29 @@ def save(symbol: str, daily: pd.DataFrame, replace_all: bool = False) -> None:
         connection.executemany(f'INSERT OR REPLACE INTO daily VALUES ({", ".join("?" * (len(COLUMNS) + 2))})', rows)
 
 
-def checked_at(symbol: str) -> float | None:
+def checked_at(symbol: str, table: str = 'symbols') -> float | None:
     with _connect() as connection:
-        row = connection.execute('SELECT checked_at FROM symbols WHERE symbol = ?', (symbol,)).fetchone()
+        row = connection.execute(f'SELECT checked_at FROM {table} WHERE symbol = ?', (symbol,)).fetchone()
     return row[0] if row else None
 
 
-def mark_checked(symbol: str) -> None:
+def mark_checked(symbol: str, table: str = 'symbols') -> None:
     with _connect() as connection:
-        connection.execute('INSERT OR REPLACE INTO symbols VALUES (?, ?)', (symbol, time.time()))
+        connection.execute(f'INSERT OR REPLACE INTO {table} VALUES (?, ?)', (symbol, time.time()))
+
+
+def read_financials(symbol: str, period: str) -> pd.DataFrame:
+    with _connect() as connection:
+        rows = pd.read_sql_query(
+            'SELECT end_date, revenue, eps FROM financials WHERE symbol = ? AND period = ? ORDER BY end_date',
+            connection, params=(symbol, period), parse_dates=['end_date'])
+    return rows.set_index('end_date')
+
+
+def save_financials(symbol: str, period: str, figures: pd.DataFrame) -> None:
+    """Insert or update; older periods Yahoo no longer returns are kept, so the history grows over time."""
+    rows = [(symbol, period, f'{day:%Y-%m-%d}', *(None if pd.isna(row[c]) else float(row[c])
+                                                   for c in FINANCIAL_COLUMNS))
+            for day, row in figures.iterrows()]
+    with _connect() as connection:
+        connection.executemany('INSERT OR REPLACE INTO financials VALUES (?, ?, ?, ?, ?)', rows)

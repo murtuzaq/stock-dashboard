@@ -10,24 +10,33 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QSplitter, QStackedWidget, QToolButton,
                                QVBoxLayout, QWidget)
 
+from atr_view import AtrView
 from chart_view import DOWN, UP, CandleChart, TimePlot
 from explorer import VIEWS
+from growth_view import GrowthView
 from history_view import HistoryView
+from macd_view import MacdView
 from price_view import PriceView
-from stoch_rsi_view import StochRsiView
 from prices import DEFAULT_RANGE, RANGE_NAMES, RANGES, load_daily, range_change, range_start, to_candles
+from rel_strength_view import BENCHMARK, RelStrengthView
+from sma_view import SmaLines, SmaView
+from stoch_rsi_view import StochRsiView
+from volume_view import VolumeView
 
 # Share of the height each view gets when stacked (price charts get more room than indicators).
-HEIGHT_WEIGHTS = {'price': 3, 'candles': 3, 'stoch_rsi': 2, 'history': 3}
+HEIGHT_WEIGHTS = {'price': 3, 'candles': 3, 'sma': 3, 'volume': 2, 'macd': 2, 'stoch_rsi': 2, 'atr': 2,
+                  'rel_strength': 2, 'growth': 3, 'history': 3}
+# Charts the moving averages are drawn on when SMA is selected together with them.
+SMA_HOSTS = ('price', 'candles')
 
 
 def chart_of(widget: QWidget) -> TimePlot | None:
-    """The chart inside a view, if it has one (the History table does not)."""
+    """The chart inside a view, if it has one (the Growth and History tables do not)."""
     return widget if isinstance(widget, TimePlot) else getattr(widget, 'plot_widget', None)
 
 
 class ViewArea(QStackedWidget):
-    _history_loaded = Signal(str, object)  # symbol, daily DataFrame
+    _history_loaded = Signal(str, object, object)  # symbol, daily DataFrame, S&P 500 daily DataFrame
 
     def __init__(self) -> None:
         super().__init__()
@@ -36,6 +45,7 @@ class ViewArea(QStackedWidget):
         self.candle_size = '1D'
         self.range = DEFAULT_RANGE
         self.daily: dict[str, pd.DataFrame] = {}  # downloaded history, kept for this session
+        self.benchmark = pd.DataFrame()
         self.candles = pd.DataFrame()
         self._history_loaded.connect(self._on_history_loaded)
 
@@ -62,8 +72,11 @@ class ViewArea(QStackedWidget):
         layout.addWidget(self.status, stretch=1)
 
         # One widget per Explorer view; each has set_data(daily, candles) and set_range(start_date).
-        self.views = {'price': PriceView(), 'candles': CandleChart(), 'stoch_rsi': StochRsiView(),
-                      'history': HistoryView()}
+        # Optional hooks: set_symbol(symbol) and set_benchmark(sp500_daily).
+        self.views = {'price': PriceView(), 'candles': CandleChart(), 'sma': SmaView(), 'volume': VolumeView(),
+                      'macd': MacdView(), 'stoch_rsi': StochRsiView(), 'atr': AtrView(),
+                      'rel_strength': RelStrengthView(), 'growth': GrowthView(), 'history': HistoryView()}
+        self.sma_overlays = {key: SmaLines(self.views[key]) for key in SMA_HOSTS}
         self.panels = QSplitter(Qt.Orientation.Vertical)
         self.panels.setChildrenCollapsible(False)
         for widget in self.views.values():
@@ -99,6 +112,9 @@ class ViewArea(QStackedWidget):
         self.selected = views
         self._arrange_panels()
         self.setCurrentIndex(1)
+        for widget in self.views.values():
+            if hasattr(widget, 'set_symbol'):
+                widget.set_symbol(symbol)
         if symbol == self.symbol and candle_size == self.candle_size and not self.candles.empty:
             return  # same data, only the selection changed
         self.symbol, self.candle_size = symbol, candle_size
@@ -107,14 +123,17 @@ class ViewArea(QStackedWidget):
             return
         self.candles = pd.DataFrame()
         self._show_status(f'Loading {symbol} price history…')
-        threading.Thread(target=lambda: self._history_loaded.emit(symbol, load_daily(symbol)), daemon=True).start()
+        threading.Thread(target=lambda: self._history_loaded.emit(symbol, load_daily(symbol), load_daily(BENCHMARK)),
+                         daemon=True).start()
 
     def set_range(self, range_label: str) -> None:
         self.range = range_label
         self._apply_range()
 
-    def _on_history_loaded(self, symbol: str, daily: pd.DataFrame) -> None:
+    def _on_history_loaded(self, symbol: str, daily: pd.DataFrame, benchmark: pd.DataFrame) -> None:
         self.daily[symbol] = daily
+        if not benchmark.empty:
+            self.benchmark = benchmark
         if symbol == self.symbol:  # ignore downloads for a symbol the user already left
             self._render()
 
@@ -129,22 +148,34 @@ class ViewArea(QStackedWidget):
         self.panels.show()
         self.candles = to_candles(daily, self.candle_size)
         for widget in self.views.values():
+            if hasattr(widget, 'set_benchmark'):
+                widget.set_benchmark(self.benchmark)
             widget.set_data(daily, self.candles)
+        for overlay in self.sma_overlays.values():
+            overlay.set_data(self.candles)
         self._apply_range()
 
     def _arrange_panels(self) -> None:
-        """Show only the selected views, link their time axes, and put the dates under the bottom chart."""
+        """Show only the selected views, link their time axes, and put the dates under the bottom chart.
+
+        SMA selected together with Price or Candles is drawn on top of the first of those, not as its own panel.
+        """
+        sma_host = next((key for key in self.selected if key in SMA_HOSTS), None) if 'sma' in self.selected else None
+        for key, overlay in self.sma_overlays.items():
+            overlay.set_visible(key == sma_host)
+        shown = [key for key in self.selected if not (key == 'sma' and sma_host)]
+
         for key, widget in self.views.items():
-            widget.setVisible(key in self.selected)
+            widget.setVisible(key in shown)
             chart = chart_of(widget)
             if chart:
                 chart.setXLink(None)
-        charts = [chart_of(self.views[key]) for key in self.selected if chart_of(self.views[key])]
+        charts = [chart_of(self.views[key]) for key in shown if chart_of(self.views[key])]
         for chart in charts[1:]:
             chart.setXLink(charts[0])
         for chart in charts:
             chart.show_dates(chart is charts[-1])
-        self.panels.setSizes([HEIGHT_WEIGHTS[key] * 1000 if key in self.selected else 0 for key in self.views])
+        self.panels.setSizes([HEIGHT_WEIGHTS[key] * 1000 if key in shown else 0 for key in self.views])
 
     def _apply_range(self) -> None:
         if self.candles.empty:

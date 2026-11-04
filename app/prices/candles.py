@@ -3,6 +3,8 @@ import pandas as pd
 
 # Candle size -> pandas resample rule. Weeks end on Friday (the last trading day).
 CANDLE_RULES = {'1D': None, '1W': 'W-FRI', '2W': '2W-FRI', '1M': 'ME', '3M': 'QE'}
+# Trading days in one candle, to convert indicator lengths given in days (e.g. 50-day SMA = 10 weekly candles).
+CANDLE_DAYS = {'1D': 1, '1W': 5, '2W': 10, '1M': 21, '3M': 63}
 
 # History length shown on the chart.
 RANGES = ['1M', '3M', '6M', 'YTD', '1Y', '5Y', '10Y', 'Max']
@@ -20,16 +22,18 @@ RANGE_OFFSETS = {
 def to_candles(daily: pd.DataFrame, candle_size: str) -> pd.DataFrame:
     """Combine daily rows into bigger candles: first open, highest high, lowest low, last close, total volume.
 
-    Each candle is dated by its first trading day.
+    Each candle is dated by its first trading day. The size is recorded in candles.attrs['candle_size'].
     """
     rule = CANDLE_RULES[candle_size]
     if rule is None or daily.empty:
-        return daily
-    rows = daily.assign(first_day=daily.index)
-    candles = rows.resample(rule).agg({
-        'first_day': 'first', 'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum',
-    }).dropna()
-    return candles.set_index('first_day').rename_axis('date')
+        candles = daily.copy()
+    else:
+        rows = daily.assign(first_day=daily.index)
+        candles = rows.resample(rule).agg({
+            'first_day': 'first', 'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum',
+        }).dropna().set_index('first_day').rename_axis('date')
+    candles.attrs['candle_size'] = candle_size
+    return candles
 
 
 def range_start(last_day: pd.Timestamp, first_day: pd.Timestamp, range_label: str) -> pd.Timestamp:
