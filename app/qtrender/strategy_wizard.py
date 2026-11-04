@@ -7,22 +7,18 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBo
                                QLabel, QLineEdit, QPushButton, QRadioButton, QScrollArea, QSpinBox, QStackedWidget,
                                QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from strategy import Condition, Exits, Operand, RuleGroup, Strategy, describe, repository
+from core import rule_editor
+from core.wizard import DEFAULT_BUY, DEFAULT_SELL, NAME, REVIEW, START, STEPS, WizardForm, WizardSession
+from qtrender.richtext import line_html
+from strategy import Condition, Exits, Operand, RuleGroup, Strategy, describe
 from strategy import catalog
 from strategy.describe import OPERATOR_WORDS
 from strategy.model import EVENT_OPERATORS
 
-NUMBER = 'number'
-STEPS = ['Start', 'Name', 'BUY rules', 'SELL rules & exits', 'Review']
+NUMBER = rule_editor.NUMBER
 STATES_VS_EVENTS = ('<b>is above / is below</b> are <i>states</i>: true on every candle where they hold.<br>'
                     '<b>crosses above / below</b> are <i>events</i>: true only on the candle where the cross happens. '
                     'Use <i>within N candles</i> to combine an event with others that happen a little later.')
-
-
-def _choices() -> list[tuple[str, str]]:
-    """Every line a rule can use, e.g. ('MACD signal', 'macd:signal')."""
-    return [(name, f'{indicator.key}:{output}') for indicator in catalog.INDICATORS.values()
-            for output, name in indicator.outputs.items()]
 
 
 class OperandPicker(QWidget):
@@ -34,7 +30,7 @@ class OperandPicker(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.choice = QComboBox()
-        for name, data in _choices():
+        for name, data in rule_editor.operand_choices():
             self.choice.addItem(name, data)
         if allow_number:
             self.choice.addItem('Number', NUMBER)
@@ -51,8 +47,7 @@ class OperandPicker(QWidget):
         self._rebuild()
 
     def _indicator(self) -> catalog.Indicator | None:
-        data = self.choice.currentData()
-        return None if data in (NUMBER, None) else catalog.get(data.split(':')[0])
+        return rule_editor.indicator_of(self.choice.currentData())
 
     def _rebuild(self) -> None:
         while self.params_row.count():
@@ -71,18 +66,15 @@ class OperandPicker(QWidget):
             self.param_spins[param.name] = spin
         self.changed.emit()
 
+    def choice_key(self) -> str | None:
+        return self.choice.currentData()
+
     def scale(self) -> str | None:
-        indicator = self._indicator()
-        return indicator.scale if indicator else None
+        return rule_editor.scale_of(self.choice.currentData())
 
     def operand(self) -> Operand:
-        indicator = self._indicator()
-        if indicator is None:
-            return Operand(value=self.number.value())
-        output = self.choice.currentData().split(':')[1]
-        params = {p.name: self.param_spins[p.name].value() for p in indicator.params
-                  if self.param_spins[p.name].value() != p.default}
-        return Operand(indicator.key, None if output == indicator.main_output else output, params)
+        values = {name: spin.value() for name, spin in self.param_spins.items()}
+        return rule_editor.build_operand(self.choice.currentData(), self.number.value(), values)
 
     def set_operand(self, operand: Operand) -> None:
         if operand.is_number:
@@ -90,21 +82,11 @@ class OperandPicker(QWidget):
             self.number.setValue(operand.value)
             return
         indicator = catalog.get(operand.indicator)
-        self.choice.setCurrentIndex(self.choice.findData(f'{indicator.key}:{operand.output or indicator.main_output}'))
+        self.choice.setCurrentIndex(self.choice.findData(rule_editor.choice_key(operand)))
         if set(self.param_spins) != {p.name for p in indicator.params}:
             self._rebuild()
-        for name, value in indicator.settings(operand.params).items():
+        for name, value in rule_editor.setting_values(operand).items():
             self.param_spins[name].setValue(value)
-
-
-# A sensible right-hand side when the left-hand side changes scale, e.g. Stoch RSI K -> the number 20.
-SUGGESTIONS = {
-    catalog.PRICE: Operand('sma', params={'days': 200}),
-    catalog.OSCILLATOR: Operand(value=20),
-    catalog.UNBOUNDED: Operand(value=0),
-    catalog.VOLUME: Operand('volume_average'),
-    catalog.RATIO: Operand('rel_strength', 'average'),
-}
 
 
 class ConditionRow(QFrame):
@@ -147,12 +129,9 @@ class ConditionRow(QFrame):
     def _suggest_right(self) -> None:
         if self._loading:
             return  # keep the stored right-hand side
-        if self.right.scale() != self.left.scale():
-            suggestion = SUGGESTIONS.get(self.left.scale())
-            if self.left.choice.currentData() == 'macd:macd':
-                suggestion = Operand('macd', 'signal')
-            if suggestion:
-                self.right.set_operand(suggestion)
+        suggestion = rule_editor.suggest_right(self.left.choice_key(), self.right.choice_key())
+        if suggestion:
+            self.right.set_operand(suggestion)
 
     def condition(self) -> Condition:
         within = self.within.value() if self.op.currentData() in EVENT_OPERATORS else 1
@@ -268,9 +247,7 @@ class StrategyWizard(QWidget):
         super().__init__()
         self.setObjectName('wizard')
         self.setMinimumWidth(560)
-        self.symbol: str | None = None  # the stock the strategy is for
-        self.original: Strategy | None = None  # the strategy being edited (None when creating)
-        self.draft: Strategy | None = None
+        self.session = WizardSession()  # the rules: steps, validation, the draft, saving
         layout = QVBoxLayout(self)
         self.title = QLabel()
         self.title.setObjectName('chartTitle')
@@ -282,9 +259,9 @@ class StrategyWizard(QWidget):
         self.pages = QStackedWidget()
         self.pages.addWidget(self._start_page())
         self.pages.addWidget(self._name_page())
-        self.buy = RuleGroupEditor(Condition(Operand('close'), 'above', Operand('sma', params={'days': 200})))
+        self.buy = RuleGroupEditor(DEFAULT_BUY)
         self.pages.addWidget(self._rules_page('Buy when…', self.buy))
-        self.sell = RuleGroupEditor(Condition(Operand('close'), 'below', Operand('sma', params={'days': 200})))
+        self.sell = RuleGroupEditor(DEFAULT_SELL)
         self.exits = ExitsEditor()
         self.pages.addWidget(self._rules_page('Sell when…', self.sell, self.exits))
         self.pages.addWidget(self._review_page())
@@ -380,31 +357,28 @@ class StrategyWizard(QWidget):
     # --- starting ---
 
     def start_new(self, symbol: str) -> None:
-        self.symbol, self.original, self.draft = symbol, None, None
-        self.title.setText(f'New strategy for {symbol}')
+        self.session.start_new(symbol)
+        self.title.setText(self.session.title())
         self.new_radio.setChecked(True)
         self._fill_existing()
-        self._go(0)
+        self._go(START)
 
     def start_edit(self, strategy: Strategy, context_symbol: str | None = None) -> None:
-        self.symbol = strategy.symbol or context_symbol
-        self.original = self.draft = strategy
-        self.title.setText(f'Edit "{strategy.name}"' + (' (library template)' if strategy.symbol is None else ''))
+        self.session.start_edit(strategy, context_symbol)
+        self.title.setText(self.session.title())
         self._load(strategy)
-        self._go(1)
+        self._go(NAME)
 
     def _fill_existing(self) -> None:
         self.existing.clear()
-        groups: dict[str, QTreeWidgetItem] = {}
-        for strategy in sorted(repository.all_strategies(), key=lambda s: (s.symbol or '', s.name.lower())):
-            folder_name = strategy.symbol or 'Library'
-            if folder_name not in groups:
-                groups[folder_name] = QTreeWidgetItem(self.existing, [folder_name])
-                groups[folder_name].setFlags(Qt.ItemFlag.ItemIsEnabled)
-                groups[folder_name].setExpanded(True)
-            item = QTreeWidgetItem(groups[folder_name], [strategy.name])
-            item.setData(0, Qt.ItemDataRole.UserRole, strategy.id)
-            item.setToolTip(0, describe(strategy))
+        for folder_name, strategies in self.session.existing_strategies():
+            folder = QTreeWidgetItem(self.existing, [folder_name])
+            folder.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            folder.setExpanded(True)
+            for strategy in strategies:
+                item = QTreeWidgetItem(folder, [strategy.name])
+                item.setData(0, Qt.ItemDataRole.UserRole, strategy.id)
+                item.setToolTip(0, describe(strategy))
 
     def _load(self, strategy: Strategy) -> None:
         self.name.setText(strategy.name)
@@ -412,58 +386,36 @@ class StrategyWizard(QWidget):
         self.sell.set_group(strategy.sell)
         self.exits.set_exits(strategy.exits)
 
-    def _blank(self) -> Strategy:
-        return Strategy('', RuleGroup('all', [self.buy.default]), RuleGroup('any', [self.sell.default]),
-                        Exits(stop_loss_pct=8), symbol=self.symbol)
+    def _form(self) -> WizardForm:
+        """Read the widgets; the session decides what the values mean."""
+        chosen = self.existing.selectedItems()
+        source_id = chosen[0].data(0, Qt.ItemDataRole.UserRole) if chosen else None
+        return WizardForm(self.copy_radio.isChecked(), source_id, self.name.text(), self.buy.group(),
+                          self.sell.group(), self.exits.exits())
 
     # --- navigation ---
 
     def _go(self, index: int) -> None:
-        first = 1 if self.original else 0
-        index = max(first, min(index, len(STEPS) - 1))
+        index = self.session.clamp(index)
         self.pages.setCurrentIndex(index)
-        self.step.setText(f'Step {index + 1 - first} of {len(STEPS) - first}: {STEPS[index]}')
-        self.back_button.setEnabled(index > first)
-        self.next_button.setText('Save && Backtest' if index == len(STEPS) - 1 else 'Next')
+        self.step.setText(self.session.step_text(index))
+        self.back_button.setEnabled(index > self.session.first_step)
+        self.next_button.setText('Save && Backtest' if index == REVIEW else 'Next')
         self.error.clear()
-        self.for_label.setText('A reusable library template (not tied to one stock).' if self.original and
-                               self.original.symbol is None else f'For {self.symbol}.')
-        if index == len(STEPS) - 1:
-            self.review.setText(f'<b>{self.name.text()}</b> — {self.symbol if not self.original or self.original.symbol else "library"}<br><br>'
-                                + describe(self._build()).replace('\n', '<br>'))
+        self.for_label.setText(self.session.for_text())
+        if index == REVIEW:
+            self.review.setText(line_html(self.session.review(self._form())))
 
     def _next(self) -> None:
         index = self.pages.currentIndex()
-        problem = self._check(index)
+        form = self._form()
+        problem = self.session.check(index, form)
         if problem:
             self.error.setText(problem)
             return
-        if index == 0:
-            chosen = self.existing.selectedItems()
-            source = repository.get(chosen[0].data(0, Qt.ItemDataRole.UserRole)) if self.copy_radio.isChecked() \
-                else None
-            self.draft = source.copy_for(self.symbol) if source else self._blank()
-            self._load(self.draft)
-        if index == len(STEPS) - 1:
-            strategy = self._build()
-            repository.save(strategy)
-            self.saved.emit(strategy)
+        if index == START:
+            self._load(self.session.begin(form))
+        if index == REVIEW:
+            self.saved.emit(self.session.save(form))
             return
         self._go(index + 1)
-
-    def _check(self, index: int) -> str | None:
-        if index == 0 and self.copy_radio.isChecked() and not self.existing.selectedItems():
-            return 'Choose the strategy to copy, or pick "Create a new strategy".'
-        if index == 1 and not self.name.text().strip():
-            return 'Give the strategy a name.'
-        if index == 2 and not self.buy.rows and not self.buy.nested:
-            return 'Add at least one BUY condition.'
-        if index == 3 and not self.sell.rows and not self.sell.nested and self.exits.exits() == Exits():
-            return 'Add a SELL condition or an exit (stop-loss, ATR stop or take-profit), or trades never close.'
-        return None
-
-    def _build(self) -> Strategy:
-        strategy = self.draft or self._blank()
-        strategy.name = self.name.text().strip()
-        strategy.buy, strategy.sell, strategy.exits = self.buy.group(), self.sell.group(), self.exits.exits()
-        return strategy

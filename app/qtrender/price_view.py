@@ -5,8 +5,9 @@ import pyqtgraph as pg
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QLinearGradient
 
-from chart_view import BACKGROUND, DOWN, GRID_TEXT, UP, TimePlot
-from prices import range_change
+from core.panels import PriceModel, price_model
+from core.theme import BACKGROUND, GRID_TEXT, MUTED, UP
+from qtrender.chart_view import TimePlot
 
 
 class PriceView(TimePlot):
@@ -19,8 +20,7 @@ class PriceView(TimePlot):
         view_box.setAutoVisible(y=True)
         view_box.enableAutoRange(axis='y')
 
-        self.daily = pd.DataFrame()
-        self.closes = np.array([])
+        self.model: PriceModel | None = None
         self.color = UP
 
         # The shaded area is a separate curve that is left out of auto-ranging, so it can always
@@ -34,7 +34,7 @@ class PriceView(TimePlot):
         view_box.sigYRangeChanged.connect(lambda _, y_range: self._fit_fill(*y_range))
 
         # Crosshair: a dashed line, a dot on the price, and the date and close at the top.
-        self.cursor_line = pg.InfiniteLine(angle=90, pen=pg.mkPen('#787b86', style=Qt.PenStyle.DashLine))
+        self.cursor_line = pg.InfiniteLine(angle=90, pen=pg.mkPen(MUTED, style=Qt.PenStyle.DashLine))
         self.cursor_dot = pg.ScatterPlotItem(size=9, pen=pg.mkPen(BACKGROUND, width=2))
         self.cursor_text = pg.TextItem(color=GRID_TEXT, fill=pg.mkBrush('#1e222d'))
         for item in (self.cursor_line, self.cursor_dot, self.cursor_text):
@@ -43,17 +43,15 @@ class PriceView(TimePlot):
         self.mouse_proxy = pg.SignalProxy(self.scene().sigMouseMoved, rateLimit=60, slot=self._on_mouse_moved)
 
     def set_data(self, daily: pd.DataFrame, candles: pd.DataFrame) -> None:
-        self.daily = daily
-        self.closes = candles['close'].to_numpy()
-        self.set_dates(candles.index)
-        slots = np.arange(len(self.closes))
-        self.line.setData(slots, self.closes)
-        self.fill.setData(slots, self.closes)
+        self.model = price_model(daily, candles)
+        self.set_dates(self.model.dates)
+        slots = np.arange(len(self.model.closes))
+        self.line.setData(slots, self.model.closes)
+        self.fill.setData(slots, self.model.closes)
 
     def set_range(self, start: pd.Timestamp) -> None:
         self._hide_cursor()
-        _, percent = range_change(self.daily, start)
-        self.color = UP if percent >= 0 else DOWN
+        self.color = self.model.color(start)
         self.line.setPen(pg.mkPen(self.color, width=2))
         super().set_range(start)
         self._fit_fill(*self.getViewBox().viewRange()[1])
@@ -72,18 +70,17 @@ class PriceView(TimePlot):
     def _on_mouse_moved(self, event) -> None:
         position = event[0]
         view_box = self.getViewBox()
-        if not len(self.closes) or not view_box.sceneBoundingRect().contains(position):
+        if self.model is None or not len(self.model.closes) or not view_box.sceneBoundingRect().contains(position):
             self._hide_cursor()
             return
         slot = int(round(view_box.mapSceneToView(position).x()))
-        if not 0 <= slot < len(self.closes):
+        if not 0 <= slot < len(self.model.closes):
             self._hide_cursor()
             return
-        price = self.closes[slot]
         (x_low, x_high), (_, y_high) = view_box.viewRange()
         self.cursor_line.setPos(slot)
-        self.cursor_dot.setData([slot], [price], brush=pg.mkBrush(self.color))
-        self.cursor_text.setText(f'{self.time_axis.dates[slot]:%b %d, %Y}   {price:,.2f}')
+        self.cursor_dot.setData([slot], [self.model.closes[slot]], brush=pg.mkBrush(self.color))
+        self.cursor_text.setText(self.model.cursor_text(slot))
         self.cursor_text.setAnchor((0, 0) if slot < (x_low + x_high) / 2 else (1, 0))
         self.cursor_text.setPos(slot, y_high)
         for item in (self.cursor_line, self.cursor_dot, self.cursor_text):

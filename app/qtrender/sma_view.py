@@ -7,12 +7,9 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 
-from chart_view import GRID_TEXT, TimePlot
-from indicators import sma
-from prices import days_to_candles
-
-SMA_DAYS = (50, 150, 200)
-SMA_COLORS = ('#2962ff', '#f7c948', '#e040fb')
+from core.panels import SMA_DAYS, sma_model
+from core.theme import GRID_TEXT, MUTED, SMA_COLORS
+from qtrender.chart_view import TimePlot
 
 
 class SmaLines:
@@ -21,18 +18,16 @@ class SmaLines:
     def __init__(self, plot: TimePlot) -> None:
         self.lines = [plot.plot(pen=pg.mkPen(color, width=1.5), connect='finite') for color in SMA_COLORS]
         self.legend = pg.LegendItem(offset=(10, 6), labelTextColor=GRID_TEXT, brush=pg.mkBrush(19, 23, 34, 200),
-                                     colCount=len(SMA_DAYS))  # one row, to cover as little of the chart as possible
+                                    colCount=len(SMA_DAYS))  # one row, to cover as little of the chart as possible
         self.legend.setParentItem(plot.getPlotItem())
 
     def set_data(self, candles: pd.DataFrame) -> None:
-        candle_size = candles.attrs.get('candle_size', '1D')
+        model = sma_model(candles)
         slots = np.arange(len(candles))
         self.legend.clear()
-        for line, days in zip(self.lines, SMA_DAYS):
-            length = days_to_candles(days, candle_size)
-            line.setData(slots, sma(candles['close'], length).to_numpy())
-            note = '' if candle_size == '1D' else f' ({length} × {candle_size} candles)'
-            self.legend.addItem(line, f'SMA {days}d{note}')
+        for line, model_line in zip(self.lines, model.lines):
+            line.setData(slots, model_line.values)
+            self.legend.addItem(line, model_line.label)
 
     def set_visible(self, visible: bool) -> None:
         # Hidden lines are left out of auto-ranging, so they don't stretch the price axis.
@@ -49,7 +44,7 @@ class SmaView(TimePlot):
         self.enableAutoRange(axis='y')
         self.setToolTip('Price above a rising average = uptrend. Below a falling one = downtrend.\n'
                         'Many swing traders only buy when price > 50 > 150 > 200-day averages.')
-        self.close_line = self.plot(pen=pg.mkPen('#787b86', width=1))
+        self.close_line = self.plot(pen=pg.mkPen(MUTED, width=1))
         self.lines = SmaLines(self)
 
     def set_data(self, daily: pd.DataFrame, candles: pd.DataFrame) -> None:

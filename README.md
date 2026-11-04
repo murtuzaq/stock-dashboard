@@ -132,8 +132,21 @@ the range.
 **Files:** strategies are JSON in [strategies/](strategies/) (commit them): `strategies/library/*.json` for
 templates, `strategies/<SYMBOL>/*.json` per stock. A copy is independent of its original and records it in
 `origin_id`. Code: engine in [app/strategy/](app/strategy/) (no GUI: `model`, `catalog`, `signals`, `backtest`,
-`describe`, `repository`); GUI in `app/strategy_view.py`, `app/trade_overlay.py`, `app/strategy_wizard.py`,
-`app/strategy_actions.py`.
+`describe`, `repository`); GUI in `app/qtrender/strategy_view.py`, `trade_overlay.py`, `strategy_wizard.py`,
+`strategy_actions.py` (the rules behind them are in `app/core/`).
+
+## Architecture: GUI and logic are separate
+
+| Package | Holds | May import Qt? |
+|---|---|---|
+| `app/prices`, `indicators`, `strategy`, `search` | data, calculations, strategy engine | no |
+| `app/core/` | application logic: session state ([dashboard.py](app/core/dashboard.py)), strategy actions, wizard rules, search state, and the *models* each view draws ([panels.py](app/core/panels.py), [strategy_results.py](app/core/strategy_results.py)) | no |
+| `app/qtrender/` | the only Qt / pyqtgraph code: widgets that draw core's models and report user input | yes |
+| `app/main.py` | composition root: builds core objects and widgets and connects them | yes |
+
+The controller drives the renderer through the `DashboardView` protocol, and slow work goes through
+`core.background.BackgroundLoader` (Qt supplies the "run on the GUI thread" function). `tests/test_boundary.py`
+fails if anything outside `qtrender/` imports a GUI toolkit.
 
 ## Tests
 

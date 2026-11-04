@@ -4,64 +4,49 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHeaderView, QLabel, QTableView, QVBoxLayout, QWidget
 
-from chart_view import DOWN, UP
+from core.panels import HISTORY_COLUMNS, HISTORY_TOOLTIPS, history_cell, history_rows, history_summary
 
-COLUMNS = ['Date', 'Open', 'High', 'Low', 'Close', 'Change', 'Volume']
-TOOLTIPS = {
-    'Date': 'First trading day of the candle',
-    'Open': 'Price of the first trade',
-    'High': 'Highest price traded',
-    'Low': 'Lowest price traded',
-    'Close': 'Price of the last trade',
-    'Change': 'Close compared with the previous close',
-    'Volume': 'Number of shares traded',
-}
+RIGHT = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
 
 
 class HistoryModel(QAbstractTableModel):
+    """Qt's view of the rows; what each cell says comes from core.panels.history_cell."""
+
     def __init__(self) -> None:
         super().__init__()
         self.rows = pd.DataFrame()
 
     def set_first_row(self, candles: pd.DataFrame, first_slot: int) -> None:
-        """Show candles from first_slot onwards; the change column still uses the candle before it."""
+        """Show candles from first_slot onwards."""
         self.beginResetModel()
-        rows = candles.assign(change=candles['close'].pct_change() * 100).iloc[first_slot:]
-        self.rows = rows.iloc[::-1]
+        self.rows = history_rows(candles, first_slot)
         self.endResetModel()
 
     def rowCount(self, parent=QModelIndex()) -> int:
         return len(self.rows)
 
     def columnCount(self, parent=QModelIndex()) -> int:
-        return len(COLUMNS)
+        return len(HISTORY_COLUMNS)
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
         if orientation != Qt.Orientation.Horizontal:
             return None
         if role == Qt.ItemDataRole.DisplayRole:
-            return COLUMNS[section]
+            return HISTORY_COLUMNS[section]
         if role == Qt.ItemDataRole.ToolTipRole:
-            return TOOLTIPS[COLUMNS[section]]
+            return HISTORY_TOOLTIPS[HISTORY_COLUMNS[section]]
         if role == Qt.ItemDataRole.TextAlignmentRole and section > 0:
-            return Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            return RIGHT
         return None
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        column = COLUMNS[index.column()]
-        row = self.rows.iloc[index.row()]
+        cell = history_cell(self.rows, index.row(), HISTORY_COLUMNS[index.column()])
         if role == Qt.ItemDataRole.DisplayRole:
-            if column == 'Date':
-                return f'{self.rows.index[index.row()]:%Y-%m-%d}'
-            if column == 'Change':
-                return '' if pd.isna(row['change']) else f'{row["change"]:+.2f}%'
-            if column == 'Volume':
-                return f'{int(row["volume"]):,}'
-            return f'{row[column.lower()]:,.2f}'
-        if role == Qt.ItemDataRole.TextAlignmentRole and column != 'Date':
-            return Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        if role == Qt.ItemDataRole.ForegroundRole and column == 'Change' and not pd.isna(row['change']):
-            return QColor(UP if row['change'] >= 0 else DOWN)
+            return cell.text
+        if role == Qt.ItemDataRole.TextAlignmentRole and cell.align_right:
+            return RIGHT
+        if role == Qt.ItemDataRole.ForegroundRole and cell.color:
+            return QColor(cell.color)
         return None
 
 
@@ -93,13 +78,4 @@ class HistoryView(QWidget):
         first_slot = int(self.candles.index.searchsorted(start))
         self.model.set_first_row(self.candles, first_slot)
         self.table.scrollToTop()
-        self._show_summary(self.candles.iloc[first_slot:])
-
-    def _show_summary(self, shown: pd.DataFrame) -> None:
-        """One line describing the range: how many rows, which dates, highest and lowest price."""
-        if shown.empty:
-            self.summary.clear()
-            return
-        self.summary.setText(
-            f'{len(shown):,} rows · {shown.index[0]:%b %d, %Y} to {shown.index[-1]:%b %d, %Y} · '
-            f'high {shown["high"].max():,.2f} · low {shown["low"].min():,.2f}')
+        self.summary.setText(history_summary(self.candles.iloc[first_slot:]))

@@ -3,27 +3,23 @@
 Click a view to show it alone; Ctrl+click or Shift+click to stack several views of the same symbol.
 The Strategies folder lists the stock's own strategies, then the library templates (in italics);
 right-click a stock, the folder or a strategy for New / Edit / Duplicate / Copy / Delete.
+
+What the tree lists and what the menus offer is decided in core (views, explorer_model, strategy_service);
+this widget builds the tree from it and reports the user's choices.
 """
 from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, Signal
-from PySide6.QtGui import QAction, QColor, QFont
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QAbstractItemView, QMenu, QTreeWidget, QTreeWidgetItem
 
-from strategy import describe, repository
-
-# Views available under every symbol, in the order they stack. Add RSI, moving averages, etc. here later.
-VIEWS = [('price', 'Price'), ('candles', 'Candles'), ('sma', 'SMA 50/150/200'), ('volume', 'Volume'),
-         ('macd', 'MACD'), ('stoch_rsi', 'Stoch RSI'), ('atr', 'ATR'), ('rel_strength', 'Rel. Strength'),
-         ('growth', 'Revenue/EPS Growth'), ('history', 'History')]
-STRATEGIES_BEFORE = 'history'  # the Strategies folder sits just above this view
-STRATEGY_PREFIX = 'strategy:'  # view key for a strategy: 'strategy:<id>'
+from core.explorer_model import strategy_entries
+from core.explorer_selection import Entry, resolve_selection
+from core.strategy_service import menu_for
+from core.views import STRATEGIES_BEFORE, STRATEGY_PREFIX, VIEWS
 
 VIEW_ROLE = Qt.ItemDataRole.UserRole
 KIND_ROLE = Qt.ItemDataRole.UserRole + 1  # 'view', 'folder' or 'strategy'
 LIBRARY_ROLE = Qt.ItemDataRole.UserRole + 2
-
-
-def strategy_key(strategy_id: str) -> str:
-    return STRATEGY_PREFIX + strategy_id
+LIBRARY_COLOR = '#9598a1'
 
 
 class Explorer(QTreeWidget):
@@ -74,20 +70,17 @@ class Explorer(QTreeWidget):
     def _fill_folder(self, symbol: str) -> None:
         folder = self.folders[symbol]
         folder.takeChildren()
-        for strategy in repository.for_symbol(symbol) + repository.library():
-            item = QTreeWidgetItem(folder, [strategy.name])
-            item.setData(0, VIEW_ROLE, strategy_key(strategy.id))
+        for entry in strategy_entries(symbol):
+            item = QTreeWidgetItem(folder, [entry.label])
+            item.setData(0, VIEW_ROLE, entry.key)
             item.setData(0, KIND_ROLE, 'strategy')
-            item.setData(0, LIBRARY_ROLE, strategy.symbol is None)
-            item.setToolTip(0, describe(strategy))
-            if strategy.symbol is None:
-                item.setText(0, f'{strategy.name} · library')
+            item.setData(0, LIBRARY_ROLE, entry.is_library)
+            item.setToolTip(0, entry.tooltip)
+            if entry.is_library:
                 font = QFont(item.font(0))
                 font.setItalic(True)
                 item.setFont(0, font)
-                item.setForeground(0, QColor('#9598a1'))
-                item.setToolTip(0, f'Library template (try it on {symbol}; right-click to copy and customise)\n\n'
-                                + describe(strategy))
+                item.setForeground(0, QColor(LIBRARY_COLOR))
         folder.setExpanded(True)
 
     def refresh_strategies(self) -> None:
@@ -118,7 +111,7 @@ class Explorer(QTreeWidget):
         if symbol not in self.symbols:
             self.add_symbol(symbol)
         for item in self._view_items(self.symbols[symbol]):
-            if item.data(0, VIEW_ROLE) == strategy_key(strategy_id):
+            if item.data(0, VIEW_ROLE) == STRATEGY_PREFIX + strategy_id:
                 self.setCurrentItem(item)
                 return
 
@@ -150,19 +143,18 @@ class Explorer(QTreeWidget):
             return
         symbol_item = self._symbol_item(current)
         items = self._view_items(symbol_item)
-        chosen_strategy = current if current.data(0, KIND_ROLE) == 'strategy' and current.isSelected() else None
-        if chosen_strategy is None:
-            chosen_strategy = next((i for i in items if i.isSelected() and i.data(0, KIND_ROLE) == 'strategy'), None)
+        entries = [Entry(item.data(0, VIEW_ROLE), item.data(0, KIND_ROLE) == 'strategy', item.isSelected())
+                   for item in items]
+        keep = resolve_selection(entries, current.data(0, VIEW_ROLE))
         # Only one symbol's views at a time, and only one strategy at a time.
         self.blockSignals(True)
         for item in self.selectedItems():
-            if item not in items or (item.data(0, KIND_ROLE) == 'strategy' and item is not chosen_strategy):
+            if item not in items or item.data(0, VIEW_ROLE) not in keep:
                 item.setSelected(False)
         self.blockSignals(False)
 
-        views = [item.data(0, VIEW_ROLE) for item in items if item.isSelected()]
-        if views:  # Ctrl+clicking away the last view keeps showing it
-            self.views_selected.emit(symbol_item.text(0), views)
+        if keep:  # Ctrl+clicking away the last view keeps showing it
+            self.views_selected.emit(symbol_item.text(0), keep)
 
     # --- right-click menu ---
 
@@ -172,27 +164,15 @@ class Explorer(QTreeWidget):
             return
         symbol = self._symbol_item(item).text(0)
         kind = item.data(0, KIND_ROLE)
-        menu = QMenu(self)
-        if kind in ('symbol', 'folder', 'view'):
-            self._action(menu, 'New Strategy…', 'new', symbol, '')
-        elif kind == 'strategy':
+        strategy_id = ''
+        if kind == 'strategy':
             strategy_id = item.data(0, VIEW_ROLE).removeprefix(STRATEGY_PREFIX)
-            if item.data(0, LIBRARY_ROLE):
-                self._action(menu, f'Copy to {symbol} and customise…', 'copy_here', symbol, strategy_id)
-                self._action(menu, 'Edit library template…', 'edit', symbol, strategy_id)
-                self._action(menu, 'Copy to another stock…', 'copy_to', symbol, strategy_id)
+        entries = menu_for(kind, symbol, bool(item.data(0, LIBRARY_ROLE)))
+        menu = QMenu(self)
+        for entry in entries:
+            if entry is None:
                 menu.addSeparator()
-                self._action(menu, 'Delete from library…', 'delete', symbol, strategy_id)
             else:
-                self._action(menu, 'Edit…', 'edit', symbol, strategy_id)
-                self._action(menu, 'Duplicate', 'duplicate', symbol, strategy_id)
-                self._action(menu, 'Copy to another stock…', 'copy_to', symbol, strategy_id)
-                self._action(menu, 'Save to Library', 'save_to_library', symbol, strategy_id)
-                menu.addSeparator()
-                self._action(menu, 'Delete…', 'delete', symbol, strategy_id)
-            menu.addSeparator()
-            self._action(menu, 'New Strategy…', 'new', symbol, '')
+                menu.addAction(entry.text, lambda action=entry.action: self.strategy_action.emit(action, symbol,
+                                                                                                strategy_id))
         menu.exec(self.viewport().mapToGlobal(position))
-
-    def _action(self, menu: QMenu, text: str, action: str, symbol: str, strategy_id: str) -> QAction:
-        return menu.addAction(text, lambda: self.strategy_action.emit(action, symbol, strategy_id))

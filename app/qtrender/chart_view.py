@@ -6,42 +6,19 @@ from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPicture
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-BACKGROUND = '#131722'
-GRID_TEXT = '#d1d4dc'
-UP = '#26a69a'
-DOWN = '#ef5350'
+from core.formatting import Line
+from core.theme import BACKGROUND, DOWN, GRID_TEXT, UP
+from core.time_axis import tick_labels
+from qtrender.richtext import line_html
 
 CANDLE_WIDTH = 0.7  # fraction of the space between candles
-
-
-def short_number(value: float) -> str:
-    """5_583_900 -> '5.58M'."""
-    for limit, suffix in ((1e9, 'B'), (1e6, 'M'), (1e3, 'K')):
-        if abs(value) >= limit:
-            return f'{value / limit:.3g}{suffix}'
-    return f'{value:.0f}'
 
 
 class TradingDayAxis(pg.AxisItem):
     """Time axis for candles placed one per slot (0, 1, 2, ...), labelled with each candle's date.
 
-    Like trading platforms, this skips weekends and holidays instead of leaving gaps for them, and puts
-    labels where a new year, month or week starts (so a label never repeats).
+    Which dates get labels is decided by core.time_axis.tick_labels; this only hands them to pyqtgraph.
     """
-
-    PIXELS_PER_LABEL = 90
-    YEAR = staticmethod(lambda d: d.year)
-    MONTH = staticmethod(lambda d: d.year * 12 + d.month)
-    WEEK = staticmethod(lambda d: (d - pd.to_timedelta(d.dayofweek, unit='D')).normalize().asi8)
-    DAY = staticmethod(lambda d: d.normalize().asi8)
-    # Coarsest to finest: (group dates by, label format, marker group, label format when the marker changes).
-    # E.g. month labels read "Oct", "Nov", but "2026" where a new year begins.
-    LEVELS = [
-        (YEAR, '%Y', None, '%Y'),
-        (MONTH, '%b', YEAR, '%Y'),
-        (WEEK, '%d', MONTH, '%b'),
-        (DAY, '%d', MONTH, '%b'),
-    ]
 
     def __init__(self) -> None:
         super().__init__(orientation='bottom')
@@ -49,37 +26,11 @@ class TradingDayAxis(pg.AxisItem):
         self.labels: dict[int, str] = {}
 
     def tickValues(self, min_value, max_value, size):
-        first, last = max(int(np.ceil(min_value)), 0), min(int(max_value), len(self.dates) - 1)
-        if last <= first:
+        labels = tick_labels(self.dates, min_value, max_value, size)
+        if not labels:
             return []
-        max_labels = max(2, int(size / self.PIXELS_PER_LABEL))
-        shown = self.dates[first:last + 1]
-        # Use the finest unit (day, week, month, year) that needs at most every other start labelled.
-        level, starts = 0, self._group_starts(shown, self.LEVELS[0][0])
-        for candidate in range(len(self.LEVELS) - 1, -1, -1):
-            candidate_starts = self._group_starts(shown, self.LEVELS[candidate][0])
-            if len(candidate_starts) <= 2 * max_labels:
-                level, starts = candidate, candidate_starts
-                break
-        starts = starts[::int(np.ceil(len(starts) / max_labels)) or 1]
-
-        _, plain_format, marker, marker_format = self.LEVELS[level]
-        marker_keys = np.asarray(marker(shown)) if marker else None
-        self.labels = {}
-        previous = None
-        for i in starts:
-            # Marker label if the year (or month) changed since the previous label, or at this very date.
-            reference = previous if previous is not None else i - 1
-            marked = marker_keys is not None and marker_keys[i] != marker_keys[reference]
-            self.labels[first + i] = f'{shown[i]:{marker_format if marked else plain_format}}'
-            previous = i
-        return [(1, list(self.labels))]
-
-    @staticmethod
-    def _group_starts(dates: pd.DatetimeIndex, group) -> list[int]:
-        """Positions where a new year/month/week/day begins (vectorised: fast even for 60 years of days)."""
-        keys = np.asarray(group(dates))
-        return (np.flatnonzero(keys[1:] != keys[:-1]) + 1).tolist()
+        self.labels = labels
+        return [(1, list(labels))]
 
     def tickStrings(self, values, scale, spacing):
         return [self.labels.get(int(round(value)), '') for value in values]
@@ -210,6 +161,9 @@ class PanelView(QWidget):
         layout.addWidget(self.legend)
         self.plot_widget = plot
         layout.addWidget(plot)
+
+    def set_legend(self, line: Line) -> None:
+        self.legend.setText(line_html(line))
 
     def set_range(self, start: pd.Timestamp) -> None:
         self.plot_widget.set_range(start)

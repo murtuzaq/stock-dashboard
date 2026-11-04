@@ -1,17 +1,16 @@
 """The search bar widget: type a symbol, company name or group; pick from a live results list.
 
 Choosing a group (e.g. Nasdaq-100) turns it into a filter chip, so the next search only looks inside it.
+The catalogue, the filter and the matching live in core.search_session; this widget shows them.
 """
-import threading
-
 from PySide6.QtCore import QEvent, QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QWidget
 
-from .catalog import Catalog, Group, Security, load_catalog
-from .matcher import MAX_RESULTS, match_groups, match_securities
+from core.background import BackgroundLoader
+from core.search_session import SearchSession
+from search import MAX_RESULTS, Catalog, Group, Security, load_catalog
 
-PLACEHOLDER = 'Search symbol, company or index (e.g. AAPL, Apple, Nasdaq)'
 RESULT_ROLE = Qt.ItemDataRole.UserRole
 GROUP_COLOR = QColor('#5b8def')
 
@@ -42,12 +41,10 @@ class ResultsPopup(QTreeWidget):
 
 class SearchBar(QWidget):
     symbol_chosen = Signal(str)
-    _catalog_loaded = Signal(object)
 
-    def __init__(self) -> None:
+    def __init__(self, loader: BackgroundLoader) -> None:
         super().__init__()
-        self.catalog: Catalog | None = None
-        self.scope: Group | None = None
+        self.session = SearchSession()
         self.popup: ResultsPopup | None = None
 
         layout = QHBoxLayout(self)
@@ -63,7 +60,7 @@ class SearchBar(QWidget):
         layout.addWidget(self.scope_chip)
 
         self.input = QLineEdit()
-        self.input.setPlaceholderText('Loading symbol list…')
+        self.input.setPlaceholderText(self.session.placeholder())
         self.input.setClearButtonEnabled(True)
         self.input.setFixedWidth(380)
         self.input.textEdited.connect(self._refresh)
@@ -71,50 +68,46 @@ class SearchBar(QWidget):
         layout.addWidget(self.input)
 
         # The catalog may need downloading on first run, so load it without freezing the window.
-        self._catalog_loaded.connect(self._on_catalog_loaded)
-        threading.Thread(target=lambda: self._catalog_loaded.emit(load_catalog()), daemon=True).start()
+        loader.run(load_catalog, self._on_catalog_loaded)
 
     def _on_catalog_loaded(self, catalog: Catalog) -> None:
-        self.catalog = catalog
-        self.input.setPlaceholderText(PLACEHOLDER)
+        self.session.catalog = catalog
+        self.input.setPlaceholderText(self.session.placeholder())
         if self.input.hasFocus():
             self._refresh()
 
     # --- scope (group filter) ---
 
     def set_scope(self, group: Group) -> None:
-        self.scope = group
+        self.session.scope = group
         self.scope_chip.setText(f'{group.label}  ✕')
         self.scope_chip.show()
         self.input.clear()
-        self.input.setPlaceholderText(f'Search within {group.label} ({len(group.symbols):,} symbols)')
+        self.input.setPlaceholderText(self.session.placeholder())
         self._refresh()
 
     def clear_scope(self) -> None:
-        self.scope = None
+        self.session.scope = None
         self.scope_chip.hide()
-        self.input.setPlaceholderText(PLACEHOLDER)
+        self.input.setPlaceholderText(self.session.placeholder())
         self._refresh()
 
     # --- results list ---
 
     def _refresh(self) -> None:
-        text = self.input.text()
-        if self.catalog is None or (not text.strip() and self.scope is None):
+        results = self.session.results(self.input.text())
+        if results is None:
             self._hide_popup()
             return
-
-        groups = [] if self.scope else match_groups(self.catalog, text)
-        securities = match_securities(self.catalog, text, self.scope)
         popup = self._ensure_popup()
         popup.clear()
-        for group in groups:
+        for group in results.groups:
             self._add_group_row(popup, group)
-        for security in securities:
+        for security in results.securities:
             self._add_security_row(popup, security)
-        if len(securities) == MAX_RESULTS:
+        if results.capped:
             self._add_note_row(popup, f'Showing the first {MAX_RESULTS}. Keep typing to narrow down.')
-        if not groups and not securities:
+        if results.empty:
             self._add_note_row(popup, 'No matches. Press Enter to open it as a symbol anyway.')
         popup.move_selection(1)
         self._place_popup(popup)
@@ -172,8 +165,10 @@ class SearchBar(QWidget):
     def _choose_current(self) -> None:
         if self.popup and self.popup.isVisible() and self.popup.currentItem():
             self._choose(self.popup.currentItem())
-        elif self.input.text().strip():
-            self._emit(self.input.text().strip().upper())
+            return
+        typed = self.session.typed_symbol(self.input.text())
+        if typed:
+            self._emit(typed)
 
     def _emit(self, symbol: str) -> None:
         self.input.clear()
@@ -203,10 +198,10 @@ class SearchBar(QWidget):
         if key == Qt.Key.Key_Escape:
             if popup_open:
                 self._hide_popup()
-            elif self.scope:
+            elif self.session.scope:
                 self.clear_scope()
             return True
-        if key == Qt.Key.Key_Backspace and not self.input.text() and self.scope:
+        if key == Qt.Key.Key_Backspace and not self.input.text() and self.session.scope:
             self.clear_scope()
             return True
         return False

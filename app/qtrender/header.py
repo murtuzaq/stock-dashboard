@@ -2,17 +2,15 @@
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QButtonGroup, QLabel, QSizePolicy, QToolBar, QToolButton, QWidget
 
-from search import SearchBar
-
-# Candle sizes. Only daily candles will be downloaded; the rest are built from them.
-TIMEFRAMES = ['1D', '1W', '2W', '1M', '3M']
+from core.views import TIMEFRAMES
+from qtrender.search_bar import SearchBar
 
 
 class Header(QToolBar):
     symbol_searched = Signal(str)
     timeframe_changed = Signal(str)
 
-    def __init__(self) -> None:
+    def __init__(self, search: SearchBar) -> None:
         super().__init__('Top bar')
         self.setMovable(False)
 
@@ -21,7 +19,7 @@ class Header(QToolBar):
         self.addWidget(title)
         self.addSeparator()
 
-        self.search = SearchBar()
+        self.search = search
         self.search.symbol_chosen.connect(self.symbol_searched)
         self.addWidget(self.search)
         self.addSeparator()
