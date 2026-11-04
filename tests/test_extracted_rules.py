@@ -3,9 +3,11 @@ import numpy as np
 import pandas as pd
 
 from conftest import make_candles, random_walk
-from core import rule_editor, theme, trade_marks
-from core.explorer_selection import Entry, resolve_selection
-from core.time_axis import tick_labels
+from core.builder import rule_editor
+from core.common import theme
+from core.dashboard import trade_marks
+from core.explorer.selection import Entry, resolve_selection
+from core.dashboard.time_axis import tick_labels
 from strategy import Condition, Costs, Exits, Operand, RuleGroup, Strategy, catalog
 from strategy.backtest import run
 

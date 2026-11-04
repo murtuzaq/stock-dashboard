@@ -1,7 +1,7 @@
 """BackgroundLoader: results and failures are handed to the GUI thread via `post`, possibly later."""
 import threading
 
-from core.background import BackgroundLoader
+from core.common.background import BackgroundLoader
 
 
 def deferred_loader():

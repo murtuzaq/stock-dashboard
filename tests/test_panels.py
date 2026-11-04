@@ -3,8 +3,11 @@ import numpy as np
 import pandas as pd
 
 from conftest import make_candles, random_walk
-from core import panels, strategy_results, theme, views
-from core.formatting import money, short_number
+from core.dashboard import panels
+from core.strategies import results as strategy_results
+from core.common import theme
+from core.dashboard import layout as views
+from core.common.formatting import money, short_number
 from strategy import Costs
 from strategy.backtest import run
 

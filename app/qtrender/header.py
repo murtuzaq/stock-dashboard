@@ -2,8 +2,8 @@
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QButtonGroup, QLabel, QSizePolicy, QToolBar, QToolButton, QWidget
 
-from core.views import TIMEFRAMES
-from qtrender.search_bar import SearchBar
+from core.dashboard.layout import TIMEFRAMES
+from qtrender.searchbar.bar import SearchBar
 
 
 class Header(QToolBar):

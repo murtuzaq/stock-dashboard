@@ -1,9 +1,9 @@
-"""Bridge for core.background: run a callable on the GUI thread, from any thread."""
+"""Bridge for core.common.background: run a callable on the GUI thread, from any thread."""
 from collections.abc import Callable
 
 from PySide6.QtCore import QObject, Signal
 
-from core.background import BackgroundLoader
+from core.common.background import BackgroundLoader
 
 
 class _Poster(QObject):

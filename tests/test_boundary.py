@@ -47,7 +47,9 @@ def test_only_qtrender_and_main_use_qt():
 
 def test_core_imports_with_the_toolkit_blocked():
     """Import every core module in a fresh interpreter where PySide6 and pyqtgraph cannot be imported."""
-    modules = [f'core.{path.stem}' for path in (APP / 'core').glob('*.py') if path.stem != '__init__']
+    modules = ['.'.join(path.relative_to(APP).with_suffix('').parts) for path in (APP / 'core').rglob('*.py')
+               if path.stem != '__init__']
+    assert len(modules) > 15, modules  # the glob really found the feature packages
     code = (
         "import sys\n"
         "for name in ('PySide6', 'pyqtgraph'):\n"

@@ -1,8 +1,8 @@
 """The Strategy Builder's rules and the strategy menu, with no widgets."""
 import pytest
 
-from core import strategy_service as actions
-from core.wizard import BUY, NAME, REVIEW, SELL, START, WizardForm, WizardSession
+from core.strategies import service as actions
+from core.builder.session import BUY, NAME, REVIEW, SELL, START, WizardForm, WizardSession
 from strategy import Condition, Exits, Operand, RuleGroup, repository
 
 
@@ -116,7 +116,7 @@ def test_strategy_service_copy_duplicate_delete():
 
 
 def test_explorer_entries_list_own_strategies_before_the_library():
-    from core.explorer_model import strategy_entries
+    from core.explorer.entries import strategy_entries
     session = WizardSession()
     session.start_new('IBM')
     saved = session.save(form())

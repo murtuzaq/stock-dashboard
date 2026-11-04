@@ -2,8 +2,8 @@
 import pandas as pd
 
 from conftest import random_walk
-from core.background import BackgroundLoader
-from core.dashboard import DashboardController, header_model
+from core.common.background import BackgroundLoader
+from core.dashboard.controller import DashboardController, header_model
 from strategy import Costs, Strategy
 
 

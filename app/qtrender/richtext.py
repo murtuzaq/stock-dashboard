@@ -1,7 +1,7 @@
 """Turns core's Span lines into the HTML a QLabel understands."""
 from html import escape
 
-from core.formatting import Line
+from core.common.formatting import Line
 
 
 def line_html(line: Line) -> str:

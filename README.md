@@ -132,21 +132,35 @@ the range.
 **Files:** strategies are JSON in [strategies/](strategies/) (commit them): `strategies/library/*.json` for
 templates, `strategies/<SYMBOL>/*.json` per stock. A copy is independent of its original and records it in
 `origin_id`. Code: engine in [app/strategy/](app/strategy/) (no GUI: `model`, `catalog`, `signals`, `backtest`,
-`describe`, `repository`); GUI in `app/qtrender/strategy_view.py`, `trade_overlay.py`, `strategy_wizard.py`,
-`strategy_actions.py` (the rules behind them are in `app/core/`).
+`describe`, `repository`); GUI in `app/qtrender/dashboard/panels/strategy_view.py`, `dashboard/trade_overlay.py` and
+`builder/wizard.py` (the rules behind them are in `app/core/strategies/` and `app/core/builder/`).
 
 ## Architecture: GUI and logic are separate
 
-| Package | Holds | May import Qt? |
-|---|---|---|
-| `app/prices`, `indicators`, `strategy`, `search` | data, calculations, strategy engine | no |
-| `app/core/` | application logic: session state ([dashboard.py](app/core/dashboard.py)), strategy actions, wizard rules, search state, and the *models* each view draws ([panels.py](app/core/panels.py), [strategy_results.py](app/core/strategy_results.py)) | no |
-| `app/qtrender/` | the only Qt / pyqtgraph code: widgets that draw core's models and report user input | yes |
-| `app/main.py` | composition root: builds core objects and widgets and connects them | yes |
+Code is grouped by feature (screen area). Each feature has its logic in `core/` and its widgets in `qtrender/`
+under the same name, so everything about, say, the Explorer is in `core/explorer/` and `qtrender/explorer/`.
 
-The controller drives the renderer through the `DashboardView` protocol, and slow work goes through
-`core.background.BackgroundLoader` (Qt supplies the "run on the GUI thread" function). `tests/test_boundary.py`
-fails if anything outside `qtrender/` imports a GUI toolkit.
+```
+app/
+  prices/ indicators/ strategy/ search/   data, calculations, strategy engine (no GUI)
+  core/                                   application logic (no GUI: tests/test_boundary.py enforces it)
+    common/        colours, text formatting, background loading
+    dashboard/     DashboardController + DashboardView, view layout, the models each panel draws
+    explorer/      ExplorerController + ExplorerTreeView, selection rules, what the tree lists
+    builder/       WizardController + WizardView, step rules, condition-row rules
+    strategies/    StrategyController (actions), strategy service, results as text
+    searchbar/     SearchController + SearchView, catalogue state and filter
+  qtrender/                               the only Qt / pyqtgraph code
+    dashboard/     view area, chart building blocks, trade overlay, panels/ (one widget per view)
+    explorer/ builder/ searchbar/         the widgets for those features
+    header.py dialogs.py style.py gui_thread.py richtext.py    window-level pieces
+  main.py                                 composition root: builds controllers and widgets, connects them
+```
+
+A widget only draws and reports what the user did. Its controller decides what that means and drives the widget
+back through a small protocol (`DashboardView`, `ExplorerTreeView`, `WizardView`, `SearchView`, `Dialogs`), so
+another toolkit only has to implement those protocols and the drawing. Slow work goes through
+`core.common.background.BackgroundLoader` (Qt supplies the "run on the GUI thread" function).
 
 ## Tests
 

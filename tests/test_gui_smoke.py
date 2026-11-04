@@ -10,8 +10,8 @@ import pandas as pd  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from conftest import random_walk  # noqa: E402
-from core.background import BackgroundLoader  # noqa: E402
-from core.views import PANEL_ORDER, VIEWS  # noqa: E402
+from core.common.background import BackgroundLoader  # noqa: E402
+from core.dashboard.layout import PANEL_ORDER, VIEWS  # noqa: E402
 from strategy import Operand, repository  # noqa: E402
 
 
@@ -33,8 +33,9 @@ def app():
 def window(app, tmp_path, monkeypatch):
     monkeypatch.setattr(repository, 'ROOT', tmp_path / 'strategies')
     from main import MainWindow
-    import qtrender.search_bar as search_bar
-    monkeypatch.setattr(search_bar, 'load_catalog', lambda: search_bar.Catalog({}, [], frozenset()))
+    import qtrender.searchbar.bar as search_bar
+    from search import Catalog
+    monkeypatch.setattr(search_bar, 'load_catalog', lambda: Catalog({}, [], frozenset()))
     main_window = MainWindow(BackgroundLoader.immediate(), lambda symbol: random_walk(500, seed=len(symbol)),
                              financials)
     main_window.show()
@@ -43,11 +44,10 @@ def window(app, tmp_path, monkeypatch):
 
 
 def test_every_view_renders_for_every_candle_size_and_range(window):
-    window.explorer.add_symbol('TEST')
+    window.explorer_controller.add_symbol('TEST')
     window.explorer.clearSelection()
-    for item in window.explorer._view_items(window.explorer.symbols['TEST']):
-        item.setSelected(item.data(0, 256) in [key for key, _ in VIEWS])  # every non-strategy view at once
-    window.explorer._handle_selection()
+    for key, _ in VIEWS:  # every non-strategy view at once
+        window.explorer.items[('TEST', key)].setSelected(True)
     controller = window.controller
     # SMA is drawn on the Price chart, so it has no panel of its own.
     assert controller.shown == [key for key in PANEL_ORDER if key in dict(VIEWS) and key != 'sma']
@@ -65,15 +65,15 @@ def test_strategy_results_and_wizard_flow(window):
                      RuleGroup('any', [Condition(Operand('close'), 'below', Operand('sma', params={'days': 50}))]),
                      Exits(stop_loss_pct=8), symbol='TEST')
     repository.save(saved)
-    window.explorer.add_symbol('TEST')
-    window.explorer.refresh_strategies()
-    window.explorer.select_strategy('TEST', saved.id)
+    window.explorer_controller.add_symbol('TEST')
+    window.explorer_controller.refresh_strategies()
+    window.explorer_controller.select_strategy('TEST', saved.id)
     strategy_view = window.view_area.views['strategy']
     assert strategy_view.strategy.id == saved.id and strategy_view.table.rowCount() > 0
     assert 'Return' in strategy_view.cards.text()
 
     # Edit it through the wizard and save: the results refresh under the same selection.
-    window.strategy_actions.handle('edit', 'TEST', saved.id)
+    window.strategy_controller.handle('edit', 'TEST', saved.id)
     wizard = window.wizard
     wizard.name.setText('Trend v2')
     for _ in range(4):
@@ -84,8 +84,8 @@ def test_strategy_results_and_wizard_flow(window):
 
 
 def test_new_strategy_wizard_reports_validation_errors(window):
-    window.explorer.add_symbol('TEST')
-    window.strategy_actions.handle('new', 'TEST', '')
+    window.explorer_controller.add_symbol('TEST')
+    window.strategy_controller.handle('new', 'TEST', '')
     wizard = window.wizard
     assert wizard.pages.currentIndex() == 0
     wizard.copy_radio.setChecked(True)
@@ -104,12 +104,11 @@ def test_trades_are_drawn_on_price_and_indicator_charts(window):
                      RuleGroup('any', [Condition(Operand('close'), 'below', Operand('sma', params={'days': 50}))]),
                      Exits(stop_loss_pct=8), symbol='TEST')
     repository.save(saved)
-    window.explorer.add_symbol('TEST')
-    window.explorer.refresh_strategies()
-    window.explorer.select_strategy('TEST', saved.id)
-    for item in window.explorer._view_items(window.explorer.symbols['TEST']):
-        if item.data(0, 256) in ('price', 'macd'):
-            item.setSelected(True)  # like Ctrl+click: stack more views with the strategy
+    window.explorer_controller.add_symbol('TEST')
+    window.explorer_controller.refresh_strategies()
+    window.explorer_controller.select_strategy('TEST', saved.id)
+    for key in ('price', 'macd'):
+        window.explorer.items[('TEST', key)].setSelected(True)  # like Ctrl+click: stack more views
     overlays = window.view_area.trade_overlays
     assert 'strategy' in window.controller.shown and {'price', 'macd'} <= set(window.controller.shown)
     assert overlays['price'].items and overlays['macd'].items
@@ -125,9 +124,8 @@ def test_selecting_one_strategy_deselects_the_other(window):
     for name in ('Template A', 'Template B'):
         repository.save(Strategy(name, RuleGroup('all', [Condition(Operand('close'), 'above', Operand('sma'))]),
                                  RuleGroup('any', []), Exits(stop_loss_pct=5)))  # symbol None: library
-    window.explorer.add_symbol('TEST')
-    library = [e for e in window.explorer._view_items(window.explorer.symbols['TEST'])
-               if e.data(0, 257) == 'strategy']
+    window.explorer_controller.add_symbol('TEST')
+    library = [item for (symbol, key), item in window.explorer.items.items() if key.startswith('strategy:')]
     assert len(library) >= 2
     library[0].setSelected(True)
     library[1].setSelected(True)
@@ -137,10 +135,69 @@ def test_selecting_one_strategy_deselects_the_other(window):
 
 
 def test_changing_a_condition_row_suggests_a_matching_right_side(window):
-    window.explorer.add_symbol('TEST')
-    window.strategy_actions.handle('new', 'TEST', '')
+    window.explorer_controller.add_symbol('TEST')
+    window.strategy_controller.handle('new', 'TEST', '')
     row = window.wizard.buy.add_row()
     row.left.choice.setCurrentIndex(row.left.choice.findData('stoch_rsi:k'))
     assert row.condition().right == Operand(value=20)
     row.left.choice.setCurrentIndex(row.left.choice.findData('macd:macd'))
     assert row.condition().right == Operand('macd', 'signal')
+
+
+def test_search_bar_widget_drives_the_controller(window):
+    from PySide6.QtCore import Qt
+    from search import Catalog, Group, Security
+    apple = Security('AAPL', 'Apple Inc', 'NASDAQ', False, ('apple', 'inc'))
+    group = Group('Nasdaq-100', 'Index', 'Largest Nasdaq stocks', ('nasdaq',), frozenset({'AAPL'}))
+    bar = window.header.search
+    bar.controller.catalog_loaded(Catalog({'AAPL': apple}, [group], frozenset()), input_has_focus=False)
+    chosen = []
+    bar.symbol_chosen.connect(chosen.append)
+
+    bar.input.setText('app')
+    bar.controller.refresh()
+    assert bar.popup.isVisible() and bar.popup.topLevelItemCount() == 1
+    assert bar._handle_key(Qt.Key.Key_Return) and chosen == ['AAPL']
+    assert not bar.popup.isVisible() and bar.input.text() == ''
+
+    bar.input.setText('nasdaq')
+    bar.controller.refresh()
+    bar.controller.choose(bar.popup.topLevelItem(0).data(0, 256))  # click the group row
+    assert bar.scope_chip.isVisible() and 'Nasdaq-100' in bar.input.placeholderText()
+    assert bar._handle_key(Qt.Key.Key_Backspace)  # empty box + filter: removes the filter
+    assert not bar.scope_chip.isVisible()
+
+
+def test_explorer_refresh_after_deleting_the_selected_strategy_falls_back_to_price(window):
+    from strategy import Condition, Exits, RuleGroup, Strategy
+    saved = Strategy('Temp', RuleGroup('all', [Condition(Operand('close'), 'above', Operand('sma'))]),
+                     RuleGroup('any', []), Exits(stop_loss_pct=5), symbol='TEST')
+    repository.save(saved)
+    window.explorer_controller.add_symbol('TEST')
+    window.explorer_controller.select_strategy('TEST', saved.id)
+    assert window.controller.strategy_id == saved.id
+    repository.delete(saved.id)
+    window.explorer_controller.refresh_strategies()
+    assert window.controller.strategy_id is None and window.controller.shown == ['price']
+    assert [key for (symbol, key) in window.explorer.items if key.startswith('strategy:')] == []
+
+
+def test_explorer_refresh_keeps_a_stack_of_views(window):
+    window.explorer_controller.add_symbol('TEST')
+    window.explorer.items[('TEST', 'macd')].setSelected(True)
+    before = list(window.controller.shown)
+    window.explorer_controller.refresh_strategies()
+    assert window.controller.shown == before == ['price', 'macd']
+
+
+def test_clicking_a_symbol_row_and_the_context_menu_are_wired(window):
+    from core.explorer.controller import Node
+    window.explorer_controller.add_symbol('TEST')
+    window.explorer.items[('TEST', 'atr')].setSelected(True)
+    window.explorer.setCurrentItem(window.explorer.symbol_items['TEST'])  # click the stock's own row
+    assert window.controller.shown == ['price']
+
+    menu = window.explorer.menu_source(Node('TEST', None, 'symbol'))
+    assert [entry.action for entry in menu] == ['new']
+    window.explorer.action_chosen.emit('new', Node('TEST', None, 'symbol'))
+    assert window.wizard.isVisible() and 'New strategy for TEST' in window.wizard.title.text()
