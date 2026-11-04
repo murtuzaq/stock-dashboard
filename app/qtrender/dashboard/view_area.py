@@ -131,6 +131,10 @@ class ViewArea(QStackedWidget):
             chart.show_dates(chart is charts[-1])
         self.panels.setSizes([layout.height_of(key) * 1000 for key in self.views])
 
+    def show_empty(self) -> None:
+        self.clear_strategy()
+        self.setCurrentIndex(0)
+
     def set_symbol(self, symbol: str) -> None:
         for widget in self.views.values():
             if hasattr(widget, 'set_symbol'):

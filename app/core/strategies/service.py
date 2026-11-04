@@ -14,8 +14,11 @@ NEW, EDIT, COPY_HERE, DUPLICATE, COPY_TO, SAVE_TO_LIBRARY, DELETE = (
 
 @dataclass(frozen=True)
 class MenuEntry:
+    """One right-click menu item. With `children` it opens a submenu; `argument` is handed back with the action."""
     text: str
-    action: str
+    action: str = ''
+    argument: str | None = None
+    children: tuple['MenuEntry | None', ...] = ()
 
 
 # None in a menu is a separator.

@@ -19,6 +19,9 @@ class FakeView:
     def set_symbol(self, symbol):
         self.calls.append(('symbol', symbol))
 
+    def show_empty(self):
+        self.calls.append(('empty',))
+
     def show_status(self, text):
         self.calls.append(('status', text))
 
@@ -185,3 +188,24 @@ def test_header_model_colours_by_the_range_change():
     assert model.change_color in ('#26a69a', '#ef5350')
     assert model.detail.startswith('· today')
 
+
+
+def test_clear_returns_to_the_empty_state_and_the_same_stock_can_be_shown_again():
+    controller, view = make_controller()
+    controller.show_views('AAA', ['price', 'macd'], '1D')
+    controller.clear()
+    assert view.of('empty') and controller.symbol is None and controller.shown == [] and controller.candles.empty
+    assert controller.start is None and controller.strategy_id is None
+
+    controller.show_views('AAA', ['price'], '1D')  # same stock again: drawn from the cache, not downloaded again
+    assert controller.source_calls.count('AAA') == 1 and view.of('data')[-1][1] == 400
+    controller.range = '1M'
+    controller.set_range('3M')  # works normally afterwards
+    assert controller.start is not None
+
+
+def test_clear_with_nothing_showing_is_harmless():
+    controller, view = make_controller()
+    controller.clear()
+    controller.set_range('1M')
+    assert view.of('empty') and view.of('range') == []

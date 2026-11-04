@@ -244,6 +244,7 @@ class StrategyWizard(QWidget):
     next_requested = Signal()
     back_requested = Signal()
     cancel_requested = Signal()
+    closed = Signal()  # the panel should be dismissed
 
     def __init__(self) -> None:
         super().__init__()
@@ -402,4 +403,4 @@ class StrategyWizard(QWidget):
         self.review.setText(line_html(line))
 
     def close(self) -> None:
-        self.hide()
+        self.closed.emit()

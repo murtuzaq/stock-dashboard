@@ -2,6 +2,13 @@
 from PySide6.QtGui import QColor, QPalette
 
 STYLE = '''
+QMenuBar { background: #131722; }
+QMenuBar::item { padding: 4px 10px; background: transparent; }
+QMenuBar::item:selected { background: #2a2e39; }
+QMenu { background: #1e222d; border: 1px solid #2a2e39; }
+QMenu::item { padding: 5px 24px; }
+QMenu::item:selected { background: #2962ff; color: white; }
+QMenu::separator { height: 1px; background: #2a2e39; margin: 4px 0; }
 QToolBar { background: #131722; border-bottom: 1px solid #2a2e39; padding: 6px; spacing: 8px; }
 QLabel#appTitle { font-size: 15px; font-weight: 600; padding: 0 8px; }
 QLineEdit { background: #1e222d; border: 1px solid #2a2e39; border-radius: 4px; padding: 5px 8px; }

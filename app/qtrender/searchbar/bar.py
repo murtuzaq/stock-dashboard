@@ -139,7 +139,8 @@ class SearchBar(QWidget):
         window = self.window()
         top_left = self.mapTo(window, QPoint(0, self.height() + 4))
         content_height = popup.topLevelItemCount() * popup.sizeHintForRow(0) + 2 * popup.frameWidth() + 10
-        popup.setGeometry(top_left.x(), top_left.y(), max(self.width(), 720), min(content_height, 440))
+        width = min(max(self.width(), 720), window.width() - top_left.x() - 8)
+        popup.setGeometry(top_left.x(), top_left.y(), max(width, 300), min(content_height, 440))
         popup.raise_()
         popup.show()
 

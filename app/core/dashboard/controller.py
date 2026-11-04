@@ -33,6 +33,7 @@ class DashboardView(Protocol):
     """What the controller needs from the renderer."""
 
     def show_selection(self, title: str, layout: PanelLayout) -> None: ...
+    def show_empty(self) -> None: ...
     def set_symbol(self, symbol: str) -> None: ...
     def show_status(self, text: str) -> None: ...
     def show_data(self, daily: pd.DataFrame, candles: pd.DataFrame, benchmark: pd.DataFrame) -> None: ...
@@ -102,6 +103,12 @@ class DashboardController:
         self.loader.run(lambda: (self.history_source(symbol), self.history_source(BENCHMARK)),
                         lambda loaded: self._on_history_loaded(symbol, *loaded),
                         lambda error: self._on_history_failed(symbol, error))
+
+    def clear(self) -> None:
+        """Nothing is selected any more (e.g. the stock being shown was removed): show the empty chart area."""
+        self.symbol, self.view_keys, self.shown, self.strategy_id = None, [], [], None
+        self.candles, self.start = pd.DataFrame(), None
+        self.view.show_empty()
 
     def select(self, symbol: str, view_keys: list[str]) -> None:
         """The Explorer selection changed: show these views, in the current candle size."""

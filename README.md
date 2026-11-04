@@ -66,6 +66,24 @@ Symbol lists are downloaded on first run into `cache/` and refreshed weekly:
 all US-listed stocks and ETFs from Nasdaq Trader, Nasdaq-100 members from Nasdaq,
 and S&P 500 members from Wikipedia. Code lives in [app/search/](app/search/).
 
+## Portfolios
+
+A portfolio is a named set of stocks, saved as `portfolios/<name>.json` (commit them like the strategies). Every
+change is saved at once, so there is no Save step.
+
+- **File > New Portfolio** (Ctrl+N) adds a node called "Portfolio 1" and lets you type a better name. Rename
+  later with double-click or F2 (names must be unique, ignoring case).
+- **File > Load Portfolio...** (Ctrl+O) lists the saved portfolios that are not open and opens the one you pick.
+  Open portfolios are not remembered between runs; load them again.
+- **Right-click a portfolio:** *Add Stock...* opens the Add Stock panel on the right: search, pick as many stocks
+  as you like (each is added immediately), press **Done**. Also *Rename...*, *Close Portfolio* (keeps the file) and
+  *Delete Portfolio...* (removes the file; the stocks and their strategies are untouched).
+- **Right-click any stock** (on its own, or inside another portfolio): *Add to portfolio >* copies it into another
+  open portfolio (or a new one). Inside a portfolio, *Remove from portfolio* takes it out of that portfolio only.
+- The search bar in the top bar still works as before: a searched stock appears as its own top-level node.
+- A stock inside a portfolio has the same views as any other. Strategies belong to the ticker, so the same
+  strategies show under every copy of it. Portfolio-wide strategies and backtests are planned.
+
 ## Candle size vs. range
 
 - **Candle** (top bar: 1D, 1W, 2W, 1M, 3M): how much time *one candle* covers.
@@ -143,6 +161,7 @@ under the same name, so everything about, say, the Explorer is in `core/explorer
 ```
 app/
   prices/ indicators/ strategy/ search/   data, calculations, strategy engine (no GUI)
+  portfolio/                              saved portfolios: model + JSON files (no GUI)
   core/                                   application logic (no GUI: tests/test_boundary.py enforces it)
     common/        colours, text formatting, background loading
     dashboard/     DashboardController + DashboardView, view layout, the models each panel draws
@@ -150,15 +169,16 @@ app/
     builder/       WizardController + WizardView, step rules, condition-row rules
     strategies/    StrategyController (actions), strategy service, results as text
     searchbar/     SearchController + SearchView, catalogue state and filter
+    portfolios/    PortfolioController (File menu, rename, right-click actions), AddStockController, service
   qtrender/                               the only Qt / pyqtgraph code
     dashboard/     view area, chart building blocks, trade overlay, panels/ (one widget per view)
-    explorer/ builder/ searchbar/         the widgets for those features
-    header.py dialogs.py style.py gui_thread.py richtext.py    window-level pieces
+    explorer/ builder/ searchbar/ portfolios/   the widgets for those features
+    header.py menu_bar.py side_panel.py dialogs.py style.py gui_thread.py richtext.py    window-level pieces
   main.py                                 composition root: builds controllers and widgets, connects them
 ```
 
 A widget only draws and reports what the user did. Its controller decides what that means and drives the widget
-back through a small protocol (`DashboardView`, `ExplorerTreeView`, `WizardView`, `SearchView`, `Dialogs`), so
+back through a small protocol (`DashboardView`, `ExplorerTreeView`, `WizardView`, `SearchView`, `AddStockView`, `Dialogs`), so
 another toolkit only has to implement those protocols and the drawing. Slow work goes through
 `core.common.background.BackgroundLoader` (Qt supplies the "run on the GUI thread" function).
 
