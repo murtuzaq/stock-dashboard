@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QSplitter, QSt
 
 from core.common.background import BackgroundLoader
 from core.dashboard.controller import HeaderModel
+from core.learn import ui_terms
 from core.common.formatting import plain, Span
 from core.common.theme import MUTED
 from core.dashboard.layout import PRICE_CHARTS, SMA_HOSTS, PanelLayout
@@ -26,7 +27,8 @@ from qtrender.dashboard.panels.history_view import HistoryView
 from qtrender.dashboard.panels.macd_view import MacdView
 from qtrender.dashboard.panels.price_view import PriceView
 from qtrender.dashboard.panels.rel_strength_view import RelStrengthView
-from qtrender.richtext import line_html
+from qtrender.learn import info_mode
+from qtrender.learn.info_label import InfoLabel
 from qtrender.dashboard.panels.sma_view import SmaLines, SmaView
 from qtrender.dashboard.panels.stoch_rsi_view import StochRsiView
 from qtrender.dashboard.panels.strategy_view import StrategyView
@@ -60,7 +62,7 @@ class ViewArea(QStackedWidget):
         title_row = QHBoxLayout()
         self.title = QLabel()
         self.title.setObjectName('chartTitle')
-        self.last_price = QLabel()
+        self.last_price = InfoLabel('price header')
         self.last_price.setObjectName('lastPrice')
         title_row.addWidget(self.title)
         title_row.addWidget(self.last_price)
@@ -97,6 +99,8 @@ class ViewArea(QStackedWidget):
         label = QLabel('Range')
         label.setObjectName('barLabel')
         label.setToolTip('How much history to show')
+        if info_mode.current():
+            info_mode.current().mark(label, ui_terms.LABELS['Range'], 'range buttons')
         bar.addWidget(label)
         self.range_buttons = QButtonGroup(self)
         for range_label in RANGES:
@@ -157,12 +161,12 @@ class ViewArea(QStackedWidget):
 
     def show_range(self, start: pd.Timestamp | None, header: HeaderModel | None) -> None:
         if start is None or header is None:
-            self.last_price.clear()
+            self.last_price.set_line([])
             return
         for widget in self.views.values():
             widget.set_range(start)
-        self.last_price.setText(line_html([plain(f'{header.last}  '), Span(header.change, header.change_color),
-                                           plain('  '), Span(header.detail, MUTED)]))
+        self.last_price.set_line([plain(f'{header.last}  '), Span(header.change, header.change_color),
+                                  plain('  '), Span(header.detail, MUTED)])
 
     def show_strategy(self, strategy: Strategy, result: BacktestResult, candles: pd.DataFrame) -> None:
         self.views['strategy'].show_result(strategy, result)

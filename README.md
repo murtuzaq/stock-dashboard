@@ -84,6 +84,24 @@ change is saved at once, so there is no Save step.
 - A stock inside a portfolio has the same views as any other. Strategies belong to the ticker, so the same
   strategies show under every copy of it. Portfolio-wide strategies and backtests are planned.
 
+## Info Wizard (learn the lingo)
+
+**View > Info Wizard** (Ctrl+I) turns on a teaching mode. While it is on, every word, row or column title that has
+an explanation is **underlined**. **Double-click** one and the **Info** panel opens on the right (below the strategy
+builder if that is open) with a short explanation, a diagram where it helps, and links to related topics. Use the
+arrows to go back, and close the panel with its X; the next double-click opens it again.
+
+- It covers the Explorer rows, indicator legends, strategy summaries and rule text, the History and Growth column
+  titles, and labels such as Range and Candle.
+- While it is on, double-clicking a portfolio opens its explanation instead of renaming it; use F2 or the
+  right-click menu to rename.
+- **Not underlined?** Right-click the word and choose *Request info on...*. The request is saved in
+  `info_requests.json` (with where you saw it) so a topic can be written for it. Send that file to the developer.
+- Turned off, nothing is underlined and everything behaves as before. The setting is remembered between runs.
+
+The explanations are Markdown files in [app/learn/topics/](app/learn/topics/); see
+[app/learn/README.md](app/learn/README.md) for how to add one.
+
 ## Candle size vs. range
 
 - **Candle** (top bar: 1D, 1W, 2W, 1M, 3M): how much time *one candle* covers.
@@ -162,6 +180,7 @@ under the same name, so everything about, say, the Explorer is in `core/explorer
 app/
   prices/ indicators/ strategy/ search/   data, calculations, strategy engine (no GUI)
   portfolio/                              saved portfolios: model + JSON files (no GUI)
+  learn/                                  the teaching library: topic files, loader/validator, linker, requests (no GUI)
   core/                                   application logic (no GUI: tests/test_boundary.py enforces it)
     common/        colours, text formatting, background loading
     dashboard/     DashboardController + DashboardView, view layout, the models each panel draws
@@ -170,15 +189,17 @@ app/
     strategies/    StrategyController (actions), strategy service, results as text
     searchbar/     SearchController + SearchView, catalogue state and filter
     portfolios/    PortfolioController (File menu, rename, right-click actions), AddStockController, service
+    learn/         InfoController (Info Wizard on/off, history, requests), UI-to-topic map, text linking
   qtrender/                               the only Qt / pyqtgraph code
     dashboard/     view area, chart building blocks, trade overlay, panels/ (one widget per view)
-    explorer/ builder/ searchbar/ portfolios/   the widgets for those features
+    explorer/ builder/ searchbar/ portfolios/ learn/   the widgets for those features
     header.py menu_bar.py side_panel.py dialogs.py style.py gui_thread.py richtext.py    window-level pieces
+                                          (side_panel.py = the Strategy Builder / Add Stock dock; the Info dock is in learn/)
   main.py                                 composition root: builds controllers and widgets, connects them
 ```
 
 A widget only draws and reports what the user did. Its controller decides what that means and drives the widget
-back through a small protocol (`DashboardView`, `ExplorerTreeView`, `WizardView`, `SearchView`, `AddStockView`, `Dialogs`), so
+back through a small protocol (`DashboardView`, `ExplorerTreeView`, `WizardView`, `SearchView`, `AddStockView`, `InfoView`, `Dialogs`), so
 another toolkit only has to implement those protocols and the drawing. Slow work goes through
 `core.common.background.BackgroundLoader` (Qt supplies the "run on the GUI thread" function).
 

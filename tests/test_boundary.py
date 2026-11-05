@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 APP = Path(__file__).resolve().parents[1] / 'app'
-HEADLESS_PACKAGES = ['core', 'prices', 'indicators', 'strategy', 'search', 'portfolio']
+HEADLESS_PACKAGES = ['core', 'prices', 'indicators', 'strategy', 'search', 'portfolio', 'learn']
 GUI_MODULES = ('PySide6', 'pyqtgraph', 'qtrender', 'tkinter', 'matplotlib')
 
 

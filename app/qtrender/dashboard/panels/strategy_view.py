@@ -7,10 +7,13 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QPushButton,
                                QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
+from core.learn import ui_terms
 from core.strategies.results import TRADE_COLUMNS, equity_curves, result_cards, rules_line, trade_rows
 from core.common.theme import EQUITY_COLOR, GRID_TEXT, HOLD_COLOR
 from qtrender.dashboard.chart_view import TimePlot
-from qtrender.richtext import line_html
+from qtrender.learn import info_mode
+from qtrender.learn.headers import mark_table_headers
+from qtrender.learn.info_label import InfoLabel
 from strategy import Costs, Strategy
 from strategy.backtest import BacktestResult
 
@@ -52,7 +55,7 @@ class StrategyView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         top = QHBoxLayout()
-        self.rules = QLabel()
+        self.rules = InfoLabel('strategy rules')
         self.rules.setObjectName('summary')
         self.rules.setWordWrap(True)
         top.addWidget(self.rules, stretch=1)
@@ -62,9 +65,8 @@ class StrategyView(QWidget):
         layout.addLayout(top)
 
         layout.addLayout(self._build_settings())
-        self.cards = QLabel()
+        self.cards = InfoLabel('strategy summary')
         self.cards.setObjectName('indicatorLegend')
-        self.cards.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(self.cards)
 
         split = QSplitter(Qt.Orientation.Vertical)
@@ -77,6 +79,7 @@ class StrategyView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
+        mark_table_headers(self.table, 'trade table')
         split.addWidget(self.table)
         split.setSizes([300, 200])
         layout.addWidget(split, stretch=1)
@@ -91,6 +94,8 @@ class StrategyView(QWidget):
                                                 ('Slippage', self.slippage))):
             caption = QLabel(label)
             caption.setObjectName('barLabel')
+            if info_mode.current() and label in ui_terms.LABELS:
+                info_mode.current().mark(caption, ui_terms.LABELS[label], 'strategy settings')
             grid.addWidget(caption, 0, column * 2)
             grid.addWidget(spin, 0, column * 2 + 1)
         grid.setColumnStretch(6, 1)
@@ -124,7 +129,7 @@ class StrategyView(QWidget):
 
     def show_result(self, strategy: Strategy, result: BacktestResult) -> None:
         self.strategy = strategy
-        self.rules.setText(line_html(rules_line(strategy)))
+        self.rules.set_line(rules_line(strategy))
         for spin, value in ((self.capital, strategy.costs.capital), (self.commission, strategy.costs.commission),
                             (self.slippage, strategy.costs.slippage_pct)):
             spin.blockSignals(True)
@@ -132,7 +137,7 @@ class StrategyView(QWidget):
             spin.blockSignals(False)
         self.plot_widget.set_values(result.dates, result)
         self.plot_widget.set_range(result.start)
-        self.cards.setText(line_html(result_cards(result)))
+        self.cards.set_line(result_cards(result))
         self._show_trades(result)
 
     def _show_trades(self, result: BacktestResult) -> None:

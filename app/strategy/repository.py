@@ -7,9 +7,11 @@ import json
 import re
 from pathlib import Path
 
+from datadir import DATA_ROOT
+
 from .model import Strategy, now
 
-ROOT = Path(__file__).resolve().parents[2] / 'strategies'
+ROOT = DATA_ROOT / 'strategies'
 LIBRARY = 'library'
 
 

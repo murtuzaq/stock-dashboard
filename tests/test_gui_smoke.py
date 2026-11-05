@@ -45,8 +45,11 @@ def window(app, tmp_path, monkeypatch):
     import qtrender.searchbar.bar as search_bar
     from search import Catalog
     monkeypatch.setattr(search_bar, 'load_catalog', lambda: Catalog({}, [], frozenset()))
+    from core.learn.preferences import MemoryPreferences
+    from learn import requests as info_requests
+    monkeypatch.setattr(info_requests, 'FILE', tmp_path / 'info_requests.json')
     main_window = MainWindow(BackgroundLoader.immediate(), lambda symbol: random_walk(500, seed=len(symbol)),
-                             financials)
+                             financials, preferences=MemoryPreferences())
     main_window.messages, main_window.answers = messages, answers
     main_window.show()
     yield main_window

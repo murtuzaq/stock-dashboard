@@ -7,11 +7,13 @@ import logging
 import re
 from pathlib import Path
 
+from datadir import DATA_ROOT
+
 from strategy.model import now
 
 from .model import Portfolio
 
-ROOT = Path(__file__).resolve().parents[2] / 'portfolios'
+ROOT = DATA_ROOT / 'portfolios'
 log = logging.getLogger(__name__)
 
 

@@ -6,11 +6,13 @@ from dataclasses import dataclass
 class Span:
     """A run of text, optionally coloured or bold. A list of spans is one line of rich text (a legend, a card).
 
-    A '\\n' inside the text is a line break.
+    A '\\n' inside the text is a line break. `term` is the id of the topic that explains this text (see
+    core.learn); the renderer makes it clickable while the Info Wizard is on.
     """
     text: str
     color: str | None = None
     bold: bool = False
+    term: str | None = None
 
 
 Line = list[Span]

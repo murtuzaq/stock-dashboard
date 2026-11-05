@@ -4,12 +4,12 @@ import pandas as pd
 import pyqtgraph as pg
 from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPicture
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from core.common.formatting import Line
 from core.common.theme import BACKGROUND, DOWN, GRID_TEXT, UP
 from core.dashboard.time_axis import tick_labels
-from qtrender.richtext import line_html
+from qtrender.learn.info_label import InfoLabel
 
 CANDLE_WIDTH = 0.7  # fraction of the space between candles
 
@@ -155,7 +155,7 @@ class PanelView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.legend = QLabel()
+        self.legend = InfoLabel('indicator legend')
         self.legend.setObjectName('indicatorLegend')
         self.legend.setToolTip(tooltip)
         layout.addWidget(self.legend)
@@ -163,7 +163,7 @@ class PanelView(QWidget):
         layout.addWidget(plot)
 
     def set_legend(self, line: Line) -> None:
-        self.legend.setText(line_html(line))
+        self.legend.set_line(line)
 
     def set_range(self, start: pd.Timestamp) -> None:
         self.plot_widget.set_range(start)

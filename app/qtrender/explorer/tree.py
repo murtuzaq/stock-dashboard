@@ -17,12 +17,16 @@ from PySide6.QtWidgets import QAbstractItemView, QMenu, QTreeWidget, QTreeWidget
 
 from core.explorer.controller import FOLDER, PORTFOLIO, STRATEGY, SYMBOL, VIEW, Node, Scope, TreeRow
 from core.explorer.entries import StrategyEntry
+from core.learn import ui_terms
+from qtrender.learn import info_mode
+from qtrender.richtext import LINK_COLOR
 from core.strategies.service import MenuEntry
 
 KEY_ROLE = Qt.ItemDataRole.UserRole  # the view key, or 'strategy:<id>'
 KIND_ROLE = Qt.ItemDataRole.UserRole + 1  # SYMBOL, VIEW, FOLDER, STRATEGY or PORTFOLIO
 LIBRARY_ROLE = Qt.ItemDataRole.UserRole + 2
 PORTFOLIO_ROLE = Qt.ItemDataRole.UserRole + 3  # a portfolio row's id
+TERM_ROLE = Qt.ItemDataRole.UserRole + 4  # the topic that explains the row, if any
 LIBRARY_COLOR = '#9598a1'
 
 
@@ -47,6 +51,11 @@ class Explorer(QTreeWidget):
         self.items: dict[tuple[Scope, str], QTreeWidgetItem] = {}  # (scope, key) -> view or strategy row
         self.itemSelectionChanged.connect(lambda: self.selection_changed.emit(*self.read_selection()))
         self.itemChanged.connect(self._on_item_changed)
+        self.mode = info_mode.current()
+        self._normal_triggers = self.editTriggers()
+        self.itemDoubleClicked.connect(self._on_double_click)
+        if self.mode:
+            self.mode.changed.connect(self._on_info_mode)
         self.itemClicked.connect(lambda item: item.data(0, KIND_ROLE) == FOLDER
                                  and item.setExpanded(not item.isExpanded()))
 
@@ -63,6 +72,8 @@ class Explorer(QTreeWidget):
         font.setBold(True)
         item.setFont(0, font)
         self.portfolio_items[portfolio_id] = item
+        item.setData(0, TERM_ROLE, ui_terms.EXPLORER_PORTFOLIO)
+        self._style_term(item)
         item.setExpanded(True)
         self.blockSignals(False)
 
@@ -99,6 +110,8 @@ class Explorer(QTreeWidget):
             child = QTreeWidgetItem(parent, [row.label])
             child.setData(0, KEY_ROLE, row.key)
             child.setData(0, KIND_ROLE, VIEW)
+            child.setData(0, TERM_ROLE, ui_terms.EXPLORER_VIEWS.get(row.key))
+            self._style_term(child)
             self.items[(scope, row.key)] = child
         self._fill_strategies(scope, strategies)
 
@@ -152,6 +165,8 @@ class Explorer(QTreeWidget):
         folder.setData(0, KIND_ROLE, FOLDER)
         folder.setFlags(Qt.ItemFlag.ItemIsEnabled)  # a heading: clicking opens/closes it, it is not a view
         folder.setToolTip(0, 'Right-click for New Strategy…')
+        folder.setData(0, TERM_ROLE, ui_terms.EXPLORER_STRATEGIES_FOLDER)
+        self._style_term(folder)
         return folder
 
     def _fill_strategies(self, scope: Scope, strategies: list[StrategyEntry]) -> None:
@@ -197,6 +212,35 @@ class Explorer(QTreeWidget):
         return Node(stock.text(0), item.data(0, KEY_ROLE), item.data(0, KIND_ROLE),
                     bool(item.data(0, LIBRARY_ROLE)), portfolio)
 
+    # --- Info mode: terms are underlined, double-click explains them ---
+
+    def _style_term(self, item: QTreeWidgetItem) -> None:
+        """Underline (and tint) a row that has an explanation while Info mode is on; plain otherwise."""
+        term = item.data(0, TERM_ROLE)
+        on = bool(self.mode and self.mode.on and self.mode.is_known(term))
+        font = QFont(item.font(0))
+        font.setUnderline(on)
+        item.setFont(0, font)
+        item.setData(0, Qt.ItemDataRole.ForegroundRole, QColor(LINK_COLOR) if on else None)
+
+    def _on_info_mode(self, on: bool) -> None:
+        for item in [*self.portfolio_items.values(), *self.folders.values(), *self.items.values()]:
+            if item.data(0, TERM_ROLE):
+                self._style_term(item)
+        # While on, a double-click means "explain this", so it must not also expand a row or rename a portfolio.
+        self.setExpandsOnDoubleClick(not on)
+        triggers = self._normal_triggers
+        self.setEditTriggers(triggers & ~QAbstractItemView.EditTrigger.DoubleClicked if on else triggers)
+
+    def _on_double_click(self, item: QTreeWidgetItem, column: int) -> None:
+        if not (self.mode and self.mode.on):
+            return
+        term = item.data(0, TERM_ROLE)
+        if self.mode.is_known(term):
+            self.mode.open(term)
+        elif item.childCount():
+            item.setExpanded(not item.isExpanded())  # keep the usual double-click behaviour on other rows
+
     # --- right-click menu ---
 
     def _show_menu(self, position: QPoint) -> None:
@@ -206,6 +250,9 @@ class Explorer(QTreeWidget):
         node = self._node(item)
         menu = QMenu(self)
         self._fill_menu(menu, self.menu_source(node), node)
+        if self.mode and self.mode.on:
+            menu.addSeparator()
+            self.mode.add_actions(menu, item.data(0, TERM_ROLE), item.text(0), 'explorer')
         menu.exec(self.viewport().mapToGlobal(position))
 
     def _fill_menu(self, menu: QMenu, entries: list[MenuEntry | None], node: Node) -> None:

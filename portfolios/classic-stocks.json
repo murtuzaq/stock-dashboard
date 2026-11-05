@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "01a5f5e468eb",
+  "name": "Classic Stocks",
+  "symbols": [
+    "IBM",
+    "NKE",
+    "COKE"
+  ],
+  "created": "2026-11-04T20:37:10",
+  "updated": "2026-11-04T21:48:59"
+}

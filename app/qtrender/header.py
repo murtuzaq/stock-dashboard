@@ -3,6 +3,8 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QButtonGroup, QLabel, QSizePolicy, QToolBar, QToolButton, QWidget
 
 from core.dashboard.layout import TIMEFRAMES
+from core.learn import ui_terms
+from qtrender.learn import info_mode
 from qtrender.searchbar.bar import SearchBar
 
 
@@ -27,6 +29,8 @@ class Header(QToolBar):
         self.candle_label = QLabel('Candle')
         self.candle_label.setObjectName('barLabel')
         self.candle_label.setToolTip('How much time each candle covers')
+        if info_mode.current():
+            info_mode.current().mark(self.candle_label, ui_terms.LABELS['Candle'], 'candle size buttons')
         self.addWidget(self.candle_label)
         self.timeframes = QButtonGroup(self)
         self.timeframes.setExclusive(True)

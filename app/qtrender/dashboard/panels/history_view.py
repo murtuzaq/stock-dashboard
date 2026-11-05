@@ -1,10 +1,13 @@
 """History view: the price data behind the candles, as a table (newest first)."""
 import pandas as pd
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QHeaderView, QLabel, QTableView, QVBoxLayout, QWidget
 
 from core.dashboard.panels import HISTORY_COLUMNS, HISTORY_TOOLTIPS, history_cell, history_rows, history_summary
+from qtrender.learn import info_mode
+from qtrender.learn.headers import install_header_events, topic_of_column
+from qtrender.richtext import LINK_COLOR
 
 RIGHT = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
 
@@ -15,6 +18,10 @@ class HistoryModel(QAbstractTableModel):
     def __init__(self) -> None:
         super().__init__()
         self.rows = pd.DataFrame()
+        self.mode = info_mode.current()
+        if self.mode:  # column titles are underlined while Info mode is on
+            self.mode.changed.connect(lambda _on: self.headerDataChanged.emit(Qt.Orientation.Horizontal, 0,
+                                                                              len(HISTORY_COLUMNS) - 1))
 
     def set_first_row(self, candles: pd.DataFrame, first_slot: int) -> None:
         """Show candles from first_slot onwards."""
@@ -37,6 +44,13 @@ class HistoryModel(QAbstractTableModel):
             return HISTORY_TOOLTIPS[HISTORY_COLUMNS[section]]
         if role == Qt.ItemDataRole.TextAlignmentRole and section > 0:
             return RIGHT
+        if self.mode and self.mode.on and self.mode.is_known(topic_of_column(HISTORY_COLUMNS[section])):
+            if role == Qt.ItemDataRole.FontRole:
+                font = QFont()
+                font.setUnderline(True)
+                return font
+            if role == Qt.ItemDataRole.ForegroundRole:
+                return QColor(LINK_COLOR)
         return None
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
@@ -69,6 +83,7 @@ class HistoryView(QWidget):
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         self.table.verticalHeader().hide()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        install_header_events(self.table.horizontalHeader(), lambda column: HISTORY_COLUMNS[column], 'history table')
         layout.addWidget(self.table)
 
     def set_data(self, daily: pd.DataFrame, candles: pd.DataFrame) -> None:

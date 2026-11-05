@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QHBoxLayout, QHeaderView, QLabel, QTableWidget, QT
 from core.common.background import BackgroundLoader
 from core.common.formatting import Cell
 from core.dashboard.panels import GROWTH_COLUMNS, GROWTH_HEADER_TIPS, growth_rows, growth_summary
+from qtrender.learn.headers import mark_table_headers
 
 RIGHT = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
 
@@ -40,6 +41,7 @@ class GrowthTable(QTableWidget):
         self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.setAlternatingRowColors(True)
+        mark_table_headers(self, f'{period} growth table')
 
     def show_figures(self, figures: pd.DataFrame) -> None:
         rows = growth_rows(self.period, figures)
