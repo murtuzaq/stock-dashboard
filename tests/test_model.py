@@ -3,7 +3,7 @@ import json
 import pytest
 
 from conftest import indicator, number
-from strategy import Condition, Costs, RuleGroup, Strategy, describe
+from strategy import About, Condition, Costs, RuleGroup, Strategy, describe
 
 
 def test_json_round_trip_keeps_everything(spec_example):
@@ -58,3 +58,18 @@ def test_describe_shows_changed_settings_and_event_windows():
         'BUY when RSI (10) crosses above 30 (within the last 3 candles) AND '
         'Rel. Strength is above Rel. Strength SMA 100d')
     assert describe(strategy).splitlines()[1] == 'SELL when never (no conditions)'
+
+
+def test_about_round_trips_and_is_left_out_of_the_file_when_empty(spec_example):
+    assert 'about' not in spec_example.to_dict()
+    spec_example.about = About('Buy dips in uptrends.', 'Swing', 'Because.', 'Can fail.', ['Book (2020).'])
+    restored = Strategy.from_dict(json.loads(json.dumps(spec_example.to_dict())))
+    assert restored.about == spec_example.about
+
+
+def test_a_copy_keeps_its_own_about(spec_example):
+    spec_example.about = About('Original summary', references=['A (2000).'])
+    copy = spec_example.copy_for('NVDA')
+    copy.about.summary = 'Changed for NVDA'
+    copy.about.references.append('B (2001).')
+    assert spec_example.about.summary == 'Original summary' and spec_example.about.references == ['A (2000).']

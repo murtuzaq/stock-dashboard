@@ -25,7 +25,8 @@ The dashboard opens in its own window.
 ## Layout
 
 - **Top bar:** symbol search and candle size (1D, 1W, 2W, 1M, 3M).
-- **Explorer (left):** each searched symbol is a parent node; its children are views:
+- **Explorer (left):** each searched symbol is a parent node. **Click the stock's name** for its company overview
+  (see below); its children are views:
   - **Price** (opens first): closing prices as an area chart, like Google Finance (one point per candle,
     so on 1D it is daily closes). Green if up over the selected range, red if down. Hover for date and close.
   - **Candles**: open/high/low/close as a candlestick chart.
@@ -65,6 +66,56 @@ Backspace on an empty search (or clicking the chip) removes the filter.
 Symbol lists are downloaded on first run into `cache/` and refreshed weekly:
 all US-listed stocks and ETFs from Nasdaq Trader, Nasdaq-100 members from Nasdaq,
 and S&P 500 members from Wikipedia. Code lives in [app/search/](app/search/).
+
+## Company overview
+
+Click a stock's **name** in the Explorer (the row above Price) to see:
+
+- **What the company does** (Yahoo's description) and key numbers: price, market value, P/E, dividend, 52-week range,
+  beta, employees, website.
+- **What investors like / don't like**, worked out from the numbers with simple, stated rules (growth, profit margin,
+  P/E and PEG, debt, cash, dividend, analyst ratings and price targets, short interest, trend, and performance vs the
+  S&P 500). Every point quotes its number and says in one line what the measure means; a missing figure just gives
+  no point. The thresholds are constants at the top of [app/company/assessment.py](app/company/assessment.py).
+- **Best strategy for this stock:** every strategy that can run on it (its own and the library templates) is
+  backtested on daily candles over the past 5 years and compared with simply buying and holding. The verdict says
+  plainly when buy & hold won. Click a strategy's row to open its full backtest.
+
+The profile is stored in `data/prices.db` (table `documents`) and refreshed weekly. Past results don't guarantee
+future ones, and the best of several strategies is partly luck: use it as a starting point.
+
+## Library menu
+
+**Library > Stocks…** (Ctrl+Shift+S) opens the Stock Library on the right: every stock whose prices are stored on this
+computer, with company name, last close, day change, how far back its prices go, and when they were last updated.
+A stock joins the library the first time its prices are downloaded (searching it anywhere does that); use the
+panel's search box to add more. **Right-click** a stock to open it or *Add to portfolio >* any saved portfolio (or a
+new one); **double-click** to open it.
+
+**Library > Strategies…** (Ctrl+Shift+T) opens the Strategy Library: library templates first, then each stock's own
+strategies. Pick one to read its rules and act on it: *Backtest on <the stock on screen>* (another stock's strategy
+is copied first), *Copy to another stock…*, *Save to Library*, *Edit…*, *Delete…*. **+ New template…** opens the
+Strategy Builder for a template that works on any stock; when you save or cancel, you are back in the library.
+
+Each library strategy says **what it does**, its **style** (trend following, mean reversion ...), **why it can work**,
+what to **watch out for**, and **references** (books and peer-reviewed papers). Built-in templates:
+
+| Strategy | Style | Main sources |
+|---|---|---|
+| Golden Cross (50/200-day) | Trend following | Murphy (1999); Brock, Lakonishok & LeBaron (1992); Sullivan, Timmermann & White (1999) |
+| 200-Day Trend Filter (Faber) | Trend following, risk control (use Candle 1M) | Faber (2007); Siegel (2014); Moskowitz, Ooi & Pedersen (2012) |
+| Turtle Breakout (20/10-day) | Breakout | Faith (2007); Covel (2007) |
+| 52-Week High Breakout | Momentum / breakout | George & Hwang (2004); O'Neil (2009) |
+| Minervini Trend Template (simplified) | Growth / momentum | Minervini (2013, 2017); O'Neil (2009) |
+| RSI(2) Pullback (Connors) | Mean reversion (daily candles) | Connors & Alvarez (2009) |
+| MACD Crossover with Trend Filter | Momentum | Appel (2005); Murphy (1999) |
+| Bollinger Band Bounce | Mean reversion | Bollinger (2001) |
+| Relative Strength Momentum | Momentum | Jegadeesh & Titman (1993); Antonacci (2014); Daniel & Moskowitz (2016) |
+| Long-Term Trend, MACD + Stoch RSI, ATR Swing Trade | Dashboard examples (not published systems) | — |
+
+None of these is guaranteed to work: each is a documented starting point to backtest on your stocks (the company
+overview compares them all). The Strategy Builder's **Description** box adds a summary to your own strategies; a
+copied strategy keeps its source's reasoning and references.
 
 ## Portfolios
 
@@ -155,6 +206,8 @@ templates (grey, "· library"), which you can try on any stock.
   Copy to another stock…, Save to Library, Delete…* (library templates: *Copy to this stock and customise…*).
 - **Strategy Builder** (opens on the right): Start (new, or copy any existing strategy) → Name →
   BUY rules → SELL rules and exits (stop-loss %, ATR stop, take-profit %) → Review → Save & Backtest.
+  Indicators include Close/Open/High/Low, SMA, MACD, Stoch RSI, RSI, ATR, Volume, Rel. Strength, **Donchian channel**
+  (highest high / lowest low of the previous N days, for breakouts) and **Bollinger Bands**.
   Each rule is *[indicator] [is above / is below / crosses above / crosses below] [indicator or number]*,
   combined with ALL (AND) or ANY (OR). *Is above/below* holds on every candle; *crosses* happens on one candle
   (optionally "within the last N candles").
@@ -180,6 +233,7 @@ under the same name, so everything about, say, the Explorer is in `core/explorer
 app/
   prices/ indicators/ strategy/ search/   data, calculations, strategy engine (no GUI)
   portfolio/                              saved portfolios: model + JSON files (no GUI)
+  company/                                company profiles from Yahoo (cached) and the like/dislike rules (no GUI)
   learn/                                  the teaching library: topic files, loader/validator, linker, requests (no GUI)
   core/                                   application logic (no GUI: tests/test_boundary.py enforces it)
     common/        colours, text formatting, background loading
@@ -189,12 +243,15 @@ app/
     strategies/    StrategyController (actions), strategy service, results as text
     searchbar/     SearchController + SearchView, catalogue state and filter
     portfolios/    PortfolioController (File menu, rename, right-click actions), AddStockController, service
+    overview/      the company overview model (facts, likes/dislikes, strategy comparison and verdict)
+    library/       StockLibraryController and StrategyLibraryController (the Library menu's panels)
     learn/         InfoController (Info Wizard on/off, history, requests), UI-to-topic map, text linking
   qtrender/                               the only Qt / pyqtgraph code
     dashboard/     view area, chart building blocks, trade overlay, panels/ (one widget per view)
-    explorer/ builder/ searchbar/ portfolios/ learn/   the widgets for those features
+    explorer/ builder/ searchbar/ portfolios/ library/ learn/   the widgets for those features
     header.py menu_bar.py side_panel.py dialogs.py style.py gui_thread.py richtext.py    window-level pieces
-                                          (side_panel.py = the Strategy Builder / Add Stock dock; the Info dock is in learn/)
+                                          (side_panel.py = the right-hand dock: Strategy Builder, Add Stock, Stock and Strategy Library;
+                                          the Info dock is in learn/; layouts.py = small layout helpers)
   main.py                                 composition root: builds controllers and widgets, connects them
 ```
 

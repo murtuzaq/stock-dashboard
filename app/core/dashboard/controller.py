@@ -10,14 +10,18 @@ from typing import Protocol
 
 import pandas as pd
 
+from company import CompanyProfile, load_profile
 from core.common import theme
 from core.common.background import BackgroundLoader
 from core.dashboard.panels import BENCHMARK
+from core.overview.model import OverviewModel, overview_model, rank_strategies
 from core.strategies.service import StrategyService
-from core.dashboard.layout import STRATEGY_VIEW, VIEWS, PanelLayout, arrange, is_strategy_key, strategy_id_of
+from core.dashboard.layout import (OVERVIEW, OVERVIEW_LABEL, STRATEGY_VIEW, VIEWS, PanelLayout, arrange,
+                                   is_strategy_key, strategy_id_of)
 from prices import DEFAULT_RANGE, RANGE_NAMES, load_daily, range_change, range_start, to_candles
 from strategy import Costs, Strategy
 from strategy.backtest import BacktestResult, run as run_backtest, strategy_hash
+from strategy.ranking import Ranked
 
 
 @dataclass(frozen=True)
@@ -40,6 +44,8 @@ class DashboardView(Protocol):
     def show_range(self, start: pd.Timestamp | None, header: HeaderModel | None) -> None: ...
     def show_strategy(self, strategy: Strategy, result: BacktestResult, candles: pd.DataFrame) -> None: ...
     def clear_strategy(self) -> None: ...
+    def show_overview(self, model: OverviewModel | None, status: str = '') -> None:
+        """The company overview, or (model None) a status line such as 'Loading…'."""
 
 
 def header_model(daily: pd.DataFrame, start: pd.Timestamp, range_label: str) -> HeaderModel:
@@ -55,11 +61,15 @@ def header_model(daily: pd.DataFrame, start: pd.Timestamp, range_label: str) -> 
 
 class DashboardController:
     def __init__(self, view: DashboardView, loader: BackgroundLoader, strategies: StrategyService | None = None,
-                 history_source: Callable[[str], pd.DataFrame] = load_daily) -> None:
+                 history_source: Callable[[str], pd.DataFrame] = load_daily,
+                 profile_source: Callable[[str], CompanyProfile] = load_profile) -> None:
         self.view = view
         self.loader = loader
         self.strategies = strategies or StrategyService()
         self.history_source = history_source
+        self.profile_source = profile_source
+        self.profiles: dict[str, CompanyProfile] = {}  # company profiles, kept for this session
+        self._rankings: dict[tuple, list[Ranked]] = {}  # by (symbol, last date, the strategies' rule hashes)
         self.symbol: str | None = None
         self.view_keys: list[str] = []  # as selected in the Explorer, e.g. ['price', 'strategy:<id>']
         self.shown: list[str] = []  # selected views that get their own panel
@@ -81,10 +91,12 @@ class DashboardController:
         self.strategy_id = strategy_id_of(strategy_keys[0]) if strategy_keys else None
         strategy = self.strategies.get(self.strategy_id) if self.strategy_id else None
 
-        labels = dict(VIEWS)
+        labels = dict(VIEWS) | {OVERVIEW: OVERVIEW_LABEL}
         if strategy:
             labels[strategy_keys[0]] = f'Strategy "{strategy.name}"'
-        title = f'{symbol} · {" + ".join(labels.get(key, key) for key in view_keys)} · {candle_size}'
+        title = f'{symbol} · {" + ".join(labels.get(key, key) for key in view_keys)}'
+        if view_keys != [OVERVIEW]:  # the overview doesn't depend on the candle size
+            title += f' · {candle_size}'
         selected = [STRATEGY_VIEW if is_strategy_key(key) else key for key in view_keys]
         layout = arrange(selected)
         self.shown = layout.shown
@@ -93,8 +105,10 @@ class DashboardController:
 
         if symbol == self.symbol and candle_size == self.candle_size and not self.candles.empty:
             self.refresh_strategy()  # same data, only the selection changed
+            self.refresh_overview()
             return
         self.symbol, self.candle_size = symbol, candle_size
+        self.refresh_overview()  # the profile loads alongside the prices
         if symbol in self.daily:
             self._render()
             return
@@ -148,6 +162,7 @@ class DashboardController:
         self.candles = to_candles(daily, self.candle_size)
         self.view.show_data(daily, self.candles, self.benchmark)
         self._apply_range()
+        self.refresh_overview()  # the strategy comparison needs the prices
 
     def _apply_range(self) -> None:
         if self.candles.empty:
@@ -156,6 +171,37 @@ class DashboardController:
         self.start = start = range_start(daily.index[-1], daily.index[0], self.range)
         self.view.show_range(start, header_model(daily, start, self.range))
         self.refresh_strategy()
+
+    # --- company overview ---
+
+    def refresh_overview(self) -> None:
+        """Show the company overview if it is selected. The profile loads once per session; the strategy comparison
+        is worked out once the prices are in (and again only if the prices or the strategies change)."""
+        if OVERVIEW not in self.shown or self.symbol is None:
+            return
+        symbol = self.symbol
+        profile = self.profiles.get(symbol)
+        if profile is None:
+            self.view.show_overview(None, f'Loading {symbol} company profile…')
+            self.loader.run(lambda: self.profile_source(symbol), lambda loaded: self._on_profile_loaded(symbol, loaded),
+                            lambda error: self._on_profile_loaded(symbol, CompanyProfile(symbol)))
+            return
+        daily = self.daily.get(symbol)
+        ranked = self._ranking(symbol, daily) if daily is not None else None
+        self.view.show_overview(overview_model(symbol, profile, daily, self.benchmark, ranked))
+
+    def _on_profile_loaded(self, symbol: str, profile: CompanyProfile) -> None:
+        self.profiles[symbol] = profile
+        if symbol == self.symbol:  # ignore profiles for a stock the user already left
+            self.refresh_overview()
+
+    def _ranking(self, symbol: str, daily: pd.DataFrame) -> list[Ranked]:
+        strategies = self.strategies.for_symbol(symbol)
+        last_day = daily.index[-1] if not daily.empty else None
+        key = (symbol, last_day, tuple(strategy_hash(strategy) for strategy in strategies))
+        if key not in self._rankings:
+            self._rankings[key] = rank_strategies(strategies, daily, self.benchmark, symbol)
+        return self._rankings[key]
 
     # --- strategy backtest ---
 

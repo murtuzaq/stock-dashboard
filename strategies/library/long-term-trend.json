@@ -91,5 +91,15 @@
     "slippage_pct": 0.05
   },
   "created": "2026-11-04T00:56:19",
-  "updated": "2026-11-04T00:56:19"
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "A dashboard example: buy when a stock in a stacked uptrend (price above the 200-day average, 50 above 150, 150 above 200) crosses back above its 50-day average; sell below the 150-day average or at a 10% loss.",
+    "style": "Trend following \u00b7 weeks to months",
+    "why": "Combines the stacked moving averages of Minervini's Trend Template with a pullback-and-recover entry. Not a published system; see \"Minervini Trend Template (simplified)\" for the documented version.",
+    "caveats": "Made for this dashboard as a teaching example and not tested in any publication.",
+    "references": [
+      "Minervini, M. (2013). Trade Like a Stock Market Wizard. McGraw-Hill.",
+      "Murphy, J. J. (1999). Technical Analysis of the Financial Markets. New York Institute of Finance."
+    ]
+  }
 }

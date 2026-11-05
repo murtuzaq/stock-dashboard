@@ -9,6 +9,8 @@ class AppMenuBar(QMenuBar):
     load_portfolio_requested = Signal()
     exit_requested = Signal()
     info_wizard_toggled = Signal(bool)
+    stock_library_requested = Signal()
+    strategy_library_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -29,6 +31,16 @@ class AppMenuBar(QMenuBar):
         self.info_action.setShortcut('Ctrl+I')
         self.info_action.setToolTip('Underline the terms that have an explanation; double-click one to learn about it')
         self.info_action.toggled.connect(self.info_wizard_toggled)
+
+        library_menu = self.addMenu('&Library')
+        self.stocks_action = library_menu.addAction('&Stocks…')
+        self.stocks_action.setShortcut('Ctrl+Shift+S')
+        self.stocks_action.setToolTip('Every stock stored on this computer: add more, or add them to a portfolio')
+        self.stocks_action.triggered.connect(self.stock_library_requested)
+        self.strategies_action = library_menu.addAction('S&trategies…')
+        self.strategies_action.setShortcut('Ctrl+Shift+T')
+        self.strategies_action.setToolTip('Every saved strategy: browse, try one on a stock, or create a template')
+        self.strategies_action.triggered.connect(self.strategy_library_requested)
 
     def set_info_checked(self, checked: bool) -> None:
         """Show the checkbox state without reporting it as a user choice."""

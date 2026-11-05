@@ -22,3 +22,12 @@ def relative_strength(close: pd.Series, benchmark_close: pd.Series) -> pd.Series
     """Ratio of the stock's close to the benchmark's on the same dates. Rising = beating the benchmark."""
     benchmark = benchmark_close.reindex(close.index, method='ffill')
     return close / benchmark
+
+
+def donchian(high: pd.Series, low: pd.Series, length: int) -> pd.DataFrame:
+    """Donchian channel: the highest high and lowest low of the PREVIOUS `length` candles (not counting this one).
+
+    Excluding the current candle is what makes "close crosses above the upper line" mean a breakout to a new
+    `length`-candle high, as in the Turtle rules.
+    """
+    return pd.DataFrame({'upper': high.rolling(length).max().shift(1), 'lower': low.rolling(length).min().shift(1)})

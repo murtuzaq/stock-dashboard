@@ -37,11 +37,19 @@ CREATE TABLE IF NOT EXISTS financials_checked (
     symbol     TEXT PRIMARY KEY,
     checked_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS documents (
+    kind     TEXT NOT NULL,      -- e.g. 'profile' (a company's Yahoo profile)
+    symbol   TEXT NOT NULL,
+    saved_at REAL NOT NULL,      -- Unix time
+    body     TEXT NOT NULL,      -- JSON
+    PRIMARY KEY (kind, symbol)
+) WITHOUT ROWID;
 '''
 FINANCIAL_COLUMNS = ['revenue', 'eps']
 
 
-def _connect(path: Path = DB_PATH) -> sqlite3.Connection:
+def _connect() -> sqlite3.Connection:
+    path = DB_PATH  # read at call time, so tests can point it at a temporary file
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path, timeout=30)
     connection.executescript(SCHEMA)
@@ -90,3 +98,33 @@ def save_financials(symbol: str, period: str, figures: pd.DataFrame) -> None:
             for day, row in figures.iterrows()]
     with _connect() as connection:
         connection.executemany('INSERT OR REPLACE INTO financials VALUES (?, ?, ?, ?, ?)', rows)
+
+
+def read_document(kind: str, symbol: str) -> tuple[float, str] | None:
+    """(saved_at, JSON text) of a stored document, or None."""
+    with _connect() as connection:
+        row = connection.execute('SELECT saved_at, body FROM documents WHERE kind = ? AND symbol = ?',
+                                 (kind, symbol)).fetchone()
+    return (row[0], row[1]) if row else None
+
+
+def save_document(kind: str, symbol: str, body: str) -> None:
+    with _connect() as connection:
+        connection.execute('INSERT OR REPLACE INTO documents VALUES (?, ?, ?, ?)', (kind, symbol, time.time(), body))
+
+
+def stored_stocks() -> pd.DataFrame:
+    """One row per symbol with stored prices: rows, first and last date, the last two closes, when last checked.
+
+    Indexes (symbols starting with '^', such as the S&P 500 used for relative strength) are left out.
+    """
+    query = '''
+        SELECT d.symbol, COUNT(*) AS days, MIN(d.date) AS first_date, MAX(d.date) AS last_date,
+               (SELECT close FROM daily WHERE symbol = d.symbol ORDER BY date DESC LIMIT 1) AS last_close,
+               (SELECT close FROM daily WHERE symbol = d.symbol ORDER BY date DESC LIMIT 1 OFFSET 1) AS previous_close,
+               s.checked_at
+        FROM daily d LEFT JOIN symbols s ON s.symbol = d.symbol
+        WHERE d.symbol NOT LIKE '^%'
+        GROUP BY d.symbol ORDER BY d.symbol'''
+    with _connect() as connection:
+        return pd.read_sql_query(query, connection, parse_dates=['first_date', 'last_date'])

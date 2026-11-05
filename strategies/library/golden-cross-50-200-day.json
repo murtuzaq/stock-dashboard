@@ -1,0 +1,69 @@
+{
+  "id": "lib-golden-cross",
+  "name": "Golden Cross (50/200-day)",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "sma",
+          "params": {
+            "days": 50
+          }
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "sma",
+          "params": {
+            "days": 50
+          }
+        },
+        "op": "crosses_below",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": null,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-05T01:05:03",
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "Buy when the 50-day average price crosses above the 200-day average (a \"golden cross\"); sell when it crosses back below (a \"death cross\").",
+    "style": "Trend following \u00b7 months to years \u00b7 few trades",
+    "why": "Moving-average crossovers are the oldest and most widely taught trend signals. The aim is to be in during long uptrends and out during long downtrends, accepting that you buy late and sell late. Brock, Lakonishok & LeBaron (1992) found moving-average rules, including 50- and 200-day versions, had predictive power on the Dow from 1897 to 1986.",
+    "caveats": "Very slow: signals come well after the turn, and in sideways markets the averages cross back and forth (whipsaws). Sullivan, Timmermann & White (1999) found the rules' edge disappeared after 1986 once data-snooping was accounted for. Expect it to trail buy & hold in strong bull markets; its value is in avoiding part of big bear markets.",
+    "references": [
+      "Murphy, J. J. (1999). Technical Analysis of the Financial Markets. New York Institute of Finance.",
+      "Brock, W., Lakonishok, J., & LeBaron, B. (1992). Simple Technical Trading Rules and the Stochastic Properties of Stock Returns. The Journal of Finance, 47(5), 1731-1764.",
+      "Sullivan, R., Timmermann, A., & White, H. (1999). Data-Snooping, Technical Trading Rule Performance, and the Bootstrap. The Journal of Finance, 54(5), 1647-1691."
+    ]
+  }
+}

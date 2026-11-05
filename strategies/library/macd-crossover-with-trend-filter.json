@@ -1,0 +1,72 @@
+{
+  "id": "lib-macd-trend",
+  "name": "MACD Crossover with Trend Filter",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "macd",
+          "output": "macd"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "macd",
+          "output": "signal"
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "macd",
+          "output": "macd"
+        },
+        "op": "crosses_below",
+        "right": {
+          "indicator": "macd",
+          "output": "signal"
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": 10,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-05T01:05:03",
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "While the price is above its 200-day average, buy when the MACD line crosses above its signal line (momentum turning up); sell when it crosses back below, or at a 10% loss.",
+    "style": "Momentum / trend following \u00b7 weeks",
+    "why": "Gerald Appel created MACD in the late 1970s; the crossover of the MACD and signal lines is its classic buy and sell signal, and it is taught in standard texts such as Murphy's. Adding the 200-day filter, a common practitioner refinement, takes only signals in the direction of the long-term trend.",
+    "caveats": "MACD is built from moving averages, so it lags and gives many whipsaw signals in sideways markets. Crossovers on their own have weak evidence; treat this as a timing tool inside a trend.",
+    "references": [
+      "Appel, G. (2005). Technical Analysis: Power Tools for Active Investors. FT Prentice Hall.",
+      "Murphy, J. J. (1999). Technical Analysis of the Financial Markets. New York Institute of Finance."
+    ]
+  }
+}

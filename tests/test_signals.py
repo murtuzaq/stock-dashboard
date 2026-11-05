@@ -60,7 +60,7 @@ def test_all_any_and_nested_groups():
 
 
 @pytest.mark.parametrize('operand, message', [
-    (indicator('bollinger'), 'Unknown indicator'),
+    (indicator('ichimoku'), 'Unknown indicator'),
     (indicator('macd', 'nope'), 'no output'),
     (indicator('rel_strength'), 'S&P 500'),
 ])
@@ -87,11 +87,15 @@ def every_indicator_strategy() -> Strategy:
         Condition(indicator('rsi'), 'below', number(35)),
         Condition(indicator('volume'), 'above', indicator('volume_average')),
         Condition(indicator('rel_strength'), 'crosses_above', indicator('rel_strength', 'average', days=20)),
+        Condition(indicator('close'), 'crosses_above', indicator('donchian', 'upper', days=20)),
+        Condition(indicator('close'), 'crosses_above', indicator('bollinger', 'lower')),
     ])
     sell = RuleGroup('any', [
         Condition(indicator('high'), 'crosses_below', indicator('sma', days=50)),
         Condition(indicator('atr'), 'above', number(3)),
         Condition(indicator('low'), 'below', indicator('open')),
+        Condition(indicator('close'), 'crosses_below', indicator('donchian', 'lower', days=10)),
+        Condition(indicator('close'), 'crosses_above', indicator('bollinger', 'upper', deviations=3)),
     ])
     return Strategy('everything', buy, sell)
 
@@ -107,3 +111,23 @@ def test_no_look_ahead_signals_never_change_when_future_candles_arrive(candle_si
     for t in np.linspace(60, len(candles) - 1, 8).astype(int):
         partial = evaluate(strategy, candles.iloc[:t + 1], benchmark)
         pd.testing.assert_frame_equal(partial, full.iloc[:t + 1])
+
+
+def test_donchian_lines_are_the_previous_candles_extremes_not_including_today():
+    candles = make_candles([10, 12, 11, 13, 9, 16])  # high = close + 1, low = close - 1
+    cache = SeriesCache(candles, None)
+    upper = cache.series(indicator('donchian', 'upper', days=3)).tolist()
+    lower = cache.series(indicator('donchian', 'lower', days=3)).tolist()
+    assert upper[3:] == [13, 14, 14] and lower[3:] == [9, 10, 8]  # from the 3 candles before each one
+    breakout = condition_signal(Condition(indicator('close'), 'crosses_above', indicator('donchian', 'upper', days=3)),
+                                cache).tolist()
+    assert breakout == [False] * 5 + [True]  # 16 closes above 14, the highest high of the 3 candles before it
+
+
+def test_bollinger_bands_use_the_population_standard_deviation():
+    closes = [10.0, 12, 11, 13, 9, 16, 14, 15, 13, 12]
+    cache = SeriesCache(make_candles(closes), None)
+    window = np.array(closes[-5:])
+    upper = cache.series(indicator('bollinger', 'upper', length=5)).iloc[-1]
+    middle = cache.series(indicator('bollinger', 'middle', length=5)).iloc[-1]
+    assert middle == pytest.approx(window.mean()) and upper == pytest.approx(window.mean() + 2 * window.std(ddof=0))

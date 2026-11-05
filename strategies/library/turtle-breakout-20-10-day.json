@@ -1,0 +1,65 @@
+{
+  "id": "lib-turtle-breakout",
+  "name": "Turtle Breakout (20/10-day)",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "donchian",
+          "output": "upper",
+          "params": {
+            "days": 20
+          }
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_below",
+        "right": {
+          "indicator": "donchian",
+          "output": "lower",
+          "params": {
+            "days": 10
+          }
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": null,
+    "take_profit_pct": null,
+    "atr_stop_multiple": 2
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-05T01:05:03",
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "Buy when the price closes above its highest high of the previous 20 days (a breakout); sell when it closes below the lowest low of the previous 10 days, or falls 2 ATRs below the entry price.",
+    "style": "Breakout / trend following \u00b7 weeks to months \u00b7 low win rate, big winners",
+    "why": "These are the core rules of the \"Turtle\" traders, whom Richard Dennis and William Eckhardt taught in 1983 to test whether trading could be learned; the group went on to earn large profits. Curtis Faith, one of the Turtles, published the full rules. The idea: big trends start with new highs, so buy strength, cut losers quickly (2 ATR stop) and let winners run.",
+    "caveats": "Built for a diversified portfolio of futures markets, not one stock. Most breakouts fail, so expect many small losses (win rates around 30-40% are normal) and long flat periods, paid for by a few large trends. Results on a single stock vary a lot.",
+    "references": [
+      "Faith, C. (2007). Way of the Turtle. McGraw-Hill.",
+      "Covel, M. W. (2007). The Complete TurtleTrader. HarperBusiness.",
+      "Wilder, J. W. (1978). New Concepts in Technical Trading Systems. Trend Research."
+    ]
+  }
+}

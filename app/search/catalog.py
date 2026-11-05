@@ -65,3 +65,8 @@ def load_catalog() -> Catalog:
                         frozenset(s.symbol for s in securities.values() if s.is_etf)))
 
     return Catalog(securities, [g for g in groups if g.symbols], nasdaq_100 | sp_500)
+
+
+def company_names() -> dict[str, str]:
+    """Symbol -> company name for every US-listed stock and ETF (the same cached list the search uses)."""
+    return {symbol: name for symbol, name, _exchange, _etf in sources.cached('listed', sources.fetch_listed) or []}

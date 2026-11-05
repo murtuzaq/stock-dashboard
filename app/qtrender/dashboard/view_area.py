@@ -24,7 +24,9 @@ from qtrender.dashboard.panels.atr_view import AtrView
 from qtrender.dashboard.chart_view import CandleChart, TimePlot
 from qtrender.dashboard.panels.growth_view import GrowthView
 from qtrender.dashboard.panels.history_view import HistoryView
+from core.overview.model import OverviewModel
 from qtrender.dashboard.panels.macd_view import MacdView
+from qtrender.dashboard.panels.overview_view import OverviewView
 from qtrender.dashboard.panels.price_view import PriceView
 from qtrender.dashboard.panels.rel_strength_view import RelStrengthView
 from qtrender.learn import info_mode
@@ -47,6 +49,7 @@ class ViewArea(QStackedWidget):
     range_selected = Signal(str)  # a range button was clicked
     costs_changed = Signal(object)  # Costs, from the results panel
     edit_strategy = Signal(str)  # strategy id (from the results panel's "Edit rules…" button)
+    strategy_chosen = Signal(str)  # strategy id (a row of the overview's strategy comparison was clicked)
 
     def __init__(self, loader: BackgroundLoader, financials_source: Callable[[str], dict]) -> None:
         super().__init__()
@@ -76,7 +79,8 @@ class ViewArea(QStackedWidget):
 
         # One widget per view; each has set_data(daily, candles) and set_range(start_date).
         # Optional hooks: set_symbol(symbol) and set_benchmark(sp500_daily).
-        self.views = {'price': PriceView(), 'candles': CandleChart(), 'sma': SmaView(), 'volume': VolumeView(),
+        self.views = {'overview': OverviewView(),
+                      'price': PriceView(), 'candles': CandleChart(), 'sma': SmaView(), 'volume': VolumeView(),
                       'macd': MacdView(), 'stoch_rsi': StochRsiView(), 'atr': AtrView(),
                       'rel_strength': RelStrengthView(), 'growth': GrowthView(loader, financials_source),
                       'strategy': StrategyView(), 'history': HistoryView()}
@@ -85,6 +89,7 @@ class ViewArea(QStackedWidget):
                                for key, widget in self.views.items() if chart_of(widget) and key != 'strategy'}
         self.views['strategy'].costs_changed.connect(self.costs_changed)
         self.views['strategy'].edit_requested.connect(self.edit_strategy)
+        self.views['overview'].strategy_chosen.connect(self.strategy_chosen)
         self.panels = QSplitter(Qt.Orientation.Vertical)
         self.panels.setChildrenCollapsible(False)
         for widget in self.views.values():
@@ -179,3 +184,6 @@ class ViewArea(QStackedWidget):
     def clear_strategy(self) -> None:
         for overlay in self.trade_overlays.values():
             overlay.clear()
+
+    def show_overview(self, model: OverviewModel | None, status: str = '') -> None:
+        self.views['overview'].show_overview(model, status)

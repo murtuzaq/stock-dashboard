@@ -1,0 +1,52 @@
+{
+  "id": "8e60f2bed86a",
+  "name": "Tutorial",
+  "symbol": "IBM",
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "below",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": 8.0,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-04T22:23:08",
+  "updated": "2026-11-04T22:23:42"
+}

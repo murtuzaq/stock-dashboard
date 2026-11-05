@@ -67,5 +67,16 @@
     "slippage_pct": 0.05
   },
   "created": "2026-11-04T00:56:19",
-  "updated": "2026-11-04T07:57:19"
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "A dashboard example: in an uptrend (above the 50-day average), buy when Stochastic RSI turns up from oversold; take profit at +10% or when it turns down from overbought, with a stop 2 ATRs below entry.",
+    "style": "Swing trading \u00b7 days to weeks",
+    "why": "Uses Stochastic RSI, introduced by Chande & Kroll, to time pullbacks, and Wilder's ATR to size the stop to the stock's normal daily movement, a practice taught widely (including by the Turtles). Not a published system.",
+    "caveats": "Made for this dashboard as a teaching example and not tested in any publication.",
+    "references": [
+      "Chande, T. S., & Kroll, S. (1994). The New Technical Trader. Wiley.",
+      "Wilder, J. W. (1978). New Concepts in Technical Trading Systems. Trend Research.",
+      "Faith, C. (2007). Way of the Turtle. McGraw-Hill."
+    ]
+  }
 }

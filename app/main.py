@@ -10,12 +10,15 @@ import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QMainWindow, QSplitter, QWidget
 
+from company import CompanyProfile, load_profile
 from core.builder.controller import WizardController
 from core.common.background import BackgroundLoader
 from core.dashboard.controller import DashboardController
 from core.explorer.controller import ExplorerController
 from core.learn.controller import InfoController
 from core.learn.preferences import Preferences
+from core.library.stocks import StockLibraryController
+from core.library.strategies import StrategyLibraryController
 from core.portfolios.add_stock import AddStockController
 from core.portfolios.controller import PortfolioController
 from core.portfolios.service import PortfolioService
@@ -24,6 +27,8 @@ from core.strategies.service import StrategyService
 from learn import TopicLibrary, load_library
 from portfolio import Portfolio
 from prices import load_daily, load_financials
+from prices.store import stored_stocks
+from search import company_names
 from qtrender.builder.wizard import StrategyWizard
 from qtrender.dashboard.view_area import ViewArea
 from qtrender.dialogs import QtDialogs
@@ -35,6 +40,8 @@ from qtrender.learn.info_mode import InfoMode
 from qtrender.learn.info_panel import MINIMUM_WIDTH as INFO_MINIMUM_WIDTH, InfoDock, InfoPanel
 from qtrender.learn.request_dialog import QtInfoDialogs, QtPreferences
 from qtrender.learn.view import QtInfoView
+from qtrender.library.stock_library_panel import StockLibraryPanel
+from qtrender.library.strategy_library_panel import StrategyLibraryPanel
 from qtrender.menu_bar import AppMenuBar
 from qtrender.portfolios.add_stock_panel import AddStockPanel
 from qtrender.searchbar.bar import SearchBar
@@ -46,7 +53,10 @@ class MainWindow(QMainWindow):
     def __init__(self, loader: BackgroundLoader | None = None,
                  history_source: Callable[[str], pd.DataFrame] = load_daily,
                  financials_source: Callable[[str], dict] = load_financials,
-                 preferences: Preferences | None = None, library: TopicLibrary | None = None) -> None:
+                 preferences: Preferences | None = None, library: TopicLibrary | None = None,
+                 profile_source: Callable[[str], CompanyProfile] = load_profile,
+                 stored_stocks_source: Callable[[], pd.DataFrame] = stored_stocks,
+                 names_source: Callable[[], dict[str, str]] = company_names) -> None:
         """The sources, loader, remembered settings and topic library can be replaced (tests use canned ones)."""
         super().__init__()
         self.setWindowTitle('Stock Dashboard')
@@ -68,16 +78,21 @@ class MainWindow(QMainWindow):
         self.explorer = Explorer()
         self.view_area = ViewArea(loader, financials_source)
         self.wizard = StrategyWizard()  # a page of the right-hand panel, for creating or editing a strategy
-        self.add_stock_panel = AddStockPanel(loader)  # the other page: adding stocks to a portfolio
+        self.add_stock_panel = AddStockPanel(loader)  # another page: adding stocks to a portfolio
+        self.stock_library_panel = StockLibraryPanel(loader)  # Library > Stocks
+        self.strategy_library_panel = StrategyLibraryPanel()  # Library > Strategies
         self.side_panel = SideDock()  # a dock on the right: one page at a time, shown only when needed
         self.side_panel.add_page(self.wizard, 'Strategy Builder')
         self.side_panel.add_page(self.add_stock_panel, 'Add Stock')
+        self.side_panel.add_page(self.stock_library_panel, 'Stock Library')
+        self.side_panel.add_page(self.strategy_library_panel, 'Strategy Library')
+        self._return_page: QWidget | None = None  # the library page to go back to when the wizard closes
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.side_panel)
         self.info_panel = InfoPanel()
         self.info_dock = InfoDock(self.info_panel)  # below the strategy builder dock when both are showing
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.info_dock)
         self.splitDockWidget(self.side_panel, self.info_dock, Qt.Orientation.Vertical)
-        self.controller = DashboardController(self.view_area, loader, strategy_service, history_source)
+        self.controller = DashboardController(self.view_area, loader, strategy_service, history_source, profile_source)
 
         self.splitter = splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.explorer)
@@ -96,6 +111,12 @@ class MainWindow(QMainWindow):
                                                        self.explorer_controller)
         self.portfolio_controller = PortfolioController(portfolio_service, self.explorer_controller, self.dialogs,
                                                         self.open_add_stock)
+        self.stock_library_controller = StockLibraryController(
+            self.stock_library_panel, loader, portfolio_service, self.explorer_controller, stored_stocks_source,
+            names_source, history_source)
+        self.strategy_library_controller = StrategyLibraryController(
+            self.strategy_library_panel, strategy_service, self.strategy_controller, self.explorer_controller,
+            current_symbol=lambda: self.controller.symbol, ask_symbol=self.dialogs.ask_symbol)
         self.info_controller = InfoController(
             QtInfoView(self.info_panel, self.info_mode, self.menu, self.show_info_dock, self.info_dock.hide),
             library, QtInfoDialogs(self), preferences, context=self._info_context)
@@ -108,6 +129,8 @@ class MainWindow(QMainWindow):
         self.menu.new_portfolio_requested.connect(self.portfolio_controller.new_portfolio)
         self.menu.load_portfolio_requested.connect(self.portfolio_controller.load_portfolio)
         self.menu.exit_requested.connect(self.close)
+        self.menu.stock_library_requested.connect(self.open_stock_library)
+        self.menu.strategy_library_requested.connect(self.open_strategy_library)
         self.menu.info_wizard_toggled.connect(self.info_controller.set_enabled)
         self.info_panel.back_requested.connect(self.info_controller.back)
         self.info_panel.forward_requested.connect(self.info_controller.forward)
@@ -121,22 +144,63 @@ class MainWindow(QMainWindow):
         self.view_area.range_selected.connect(self.controller.set_range)
         self.view_area.costs_changed.connect(self.controller.update_costs)
         self.view_area.edit_strategy.connect(self.strategy_controller.edit_current)
+        self.view_area.strategy_chosen.connect(  # a row of the overview's strategy comparison
+            lambda strategy_id: self.explorer_controller.select_strategy(self.controller.symbol, strategy_id))
         self.wizard.next_requested.connect(self.wizard_controller.next)
         self.wizard.back_requested.connect(self.wizard_controller.back)
         self.wizard.cancel_requested.connect(self.wizard_controller.cancel)
-        self.wizard.closed.connect(self.side_panel.dismiss)
+        self.wizard.closed.connect(self._wizard_closed)
         self.add_stock_panel.symbol_chosen.connect(self.add_stock_controller.add)
         self.add_stock_panel.done_requested.connect(self.add_stock_controller.done)
         self.add_stock_panel.closed.connect(self.side_panel.dismiss)
+        self.stock_library_panel.menu_source = self.stock_library_controller.menu_for
+        self.stock_library_panel.symbol_added.connect(self.stock_library_controller.add)
+        self.stock_library_panel.action_chosen.connect(self.stock_library_controller.menu_action)
+        self.stock_library_panel.done_requested.connect(self.stock_library_controller.done)
+        self.stock_library_panel.closed.connect(self.side_panel.dismiss)
+        self.strategy_library_panel.menu_source = self.strategy_library_controller.menu_for
+        self.strategy_library_panel.strategy_selected.connect(self.strategy_library_controller.select)
+        self.strategy_library_panel.action_chosen.connect(self.strategy_library_controller.run)
+        self.strategy_library_panel.done_requested.connect(self.strategy_library_controller.done)
+        self.strategy_library_panel.closed.connect(self.side_panel.dismiss)
         self.info_controller.restore()  # apply the remembered View > Info Wizard setting
 
     def open_add_stock(self, portfolio: Portfolio) -> None:
         """Right-click > Add Stock…: the panel replaces the strategy builder, after confirming if that is in use."""
-        if self.wizard.isVisible() and not self.dialogs.confirm(
-                'Discard the strategy you are editing and add stocks instead?'):
+        if not self._may_replace_wizard('add stocks instead'):
             return
         self.add_stock_controller.start(portfolio)
         self.show_panel(self.add_stock_panel)
+
+    def open_stock_library(self) -> None:
+        """Library > Stocks."""
+        if self._may_replace_wizard('open the Stock Library instead'):
+            self.stock_library_controller.start()
+            self.show_panel(self.stock_library_panel)
+
+    def open_strategy_library(self) -> None:
+        """Library > Strategies."""
+        if self._may_replace_wizard('open the Strategy Library instead'):
+            self.strategy_library_controller.start()
+            self.show_panel(self.strategy_library_panel)
+
+    def _may_replace_wizard(self, instead: str) -> bool:
+        """Another page may take the side panel unless a strategy is being edited and the user wants to keep it."""
+        if not self.wizard.isVisible():
+            return True
+        if self.dialogs.confirm(f'Discard the strategy you are editing and {instead}?'):
+            self._return_page = None
+            return True
+        return False
+
+    def _wizard_closed(self) -> None:
+        """Back to the Strategy Library if the wizard was opened from it (showing the change), else close the panel."""
+        page, self._return_page = self._return_page, None
+        if page is self.strategy_library_panel:
+            self.strategy_library_controller.refresh()
+            self.show_panel(page)
+        else:
+            self.side_panel.dismiss()
 
     def _info_context(self) -> dict:
         """What was on screen, saved with an info request so the developer can see where the term appeared."""
@@ -159,6 +223,8 @@ class MainWindow(QMainWindow):
     def show_panel(self, page: QWidget) -> None:
         """Show a page in the right-hand dock, giving it room (taken from the charts) if it was closed."""
         was_open = self.side_panel.isVisible()
+        if page is self.wizard and was_open and self.side_panel.stack.currentWidget() is self.strategy_library_panel:
+            self._return_page = self.strategy_library_panel  # opened from the library: come back to it
         self.side_panel.show_page(page)
         if not was_open:
             self.resizeDocks([self.side_panel], [max(MINIMUM_WIDTH, 620)], Qt.Orientation.Horizontal)

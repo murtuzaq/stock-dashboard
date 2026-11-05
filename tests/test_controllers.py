@@ -128,8 +128,9 @@ class FakeDialogs:
 
 class FakeDashboard:
     symbol = 'IBM'
-    def __init__(self): self.refreshed = 0
+    def __init__(self): self.refreshed = self.overview_refreshed = 0
     def refresh_strategy(self): self.refreshed += 1
+    def refresh_overview(self): self.overview_refreshed += 1
 
 
 def make_actions(dialogs=None):

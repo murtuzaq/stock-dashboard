@@ -45,7 +45,8 @@ class StrategyController:
 
     # --- actions ---
 
-    def new(self, symbol: str, strategy_id: str) -> None:
+    def new(self, symbol: str | None, strategy_id: str) -> None:
+        """A new strategy for this stock, or (symbol None) a new library template."""
         self.wizard.start_new(symbol)
         self.dialogs.show_wizard()
 
@@ -86,8 +87,12 @@ class StrategyController:
     def saved(self, strategy: Strategy) -> None:
         self.wizard.cancel()  # closes the panel
         symbol = strategy.symbol or self.wizard.symbol
-        self._show(symbol, strategy)
+        if symbol:
+            self._show(symbol, strategy)
+        else:  # a library template made from the Library menu, with no stock on screen
+            self.explorer.refresh_strategies()
         self.dashboard.refresh_strategy()  # the rules may have changed under the same selection
+        self.dashboard.refresh_overview()  # and so may the strategy comparison
 
     def _show(self, symbol: str, strategy: Strategy) -> None:
         self.explorer.refresh_strategies()

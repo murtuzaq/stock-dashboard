@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
-from core.dashboard.layout import STRATEGIES_BEFORE, VIEWS, strategy_id_of, strategy_key
+from core.dashboard.layout import OVERVIEW, STRATEGIES_BEFORE, VIEWS, strategy_id_of, strategy_key
 from core.explorer.entries import StrategyEntry, strategy_entries
 from core.explorer.selection import Entry, resolve_selection
 from core.portfolios import actions as portfolio_actions
@@ -32,7 +32,7 @@ class Scope(NamedTuple):
 class Node:
     """A tree node as the widget reports it. A portfolio node has an empty symbol and its id in `portfolio`."""
     symbol: str
-    key: str | None  # view key, or 'strategy:<id>'; None for a stock, folder or portfolio
+    key: str | None  # view key, 'strategy:<id>', or OVERVIEW for a stock's own row; None for a folder or portfolio
     kind: str
     is_library: bool = False
     portfolio: str | None = None  # the portfolio the node is or sits in, if any
@@ -176,14 +176,14 @@ class ExplorerController:
     def on_selection_changed(self, current: Node | None, selected: list[Node]) -> None:
         if current is None or current.kind == PORTFOLIO:  # a portfolio has no views: keep showing what was showing
             return
-        if current.kind == SYMBOL:  # a stock was clicked: open its first view
-            self.view.select_only(current.scope, [FIRST_VIEW])
-            return
         scope = current.scope
-        chosen = {node.key for node in selected if node.scope == scope and node.kind in (VIEW, STRATEGY)}
-        strategy_keys = {entry.key for entry in self.strategies[scope.symbol]}
-        rows = [Entry(key, key in strategy_keys, key in chosen) for key in self.ordered_keys(scope.symbol)]
-        keep = resolve_selection(rows, current.key)
+        if current.kind == SYMBOL:  # the stock's name was clicked: its company overview, on its own
+            keep = [OVERVIEW]
+        else:
+            chosen = {node.key for node in selected if node.scope == scope and node.kind in (VIEW, STRATEGY)}
+            strategy_keys = {entry.key for entry in self.strategies[scope.symbol]}
+            rows = [Entry(key, key in strategy_keys, key in chosen) for key in self.ordered_keys(scope.symbol)]
+            keep = resolve_selection(rows, current.key)
         # Only one stock's views at a time, and only one strategy at a time.
         self.view.apply_selection(scope, keep)
         self.current_scope, self.current_key, self.selected = scope, current.key, keep
@@ -228,8 +228,9 @@ class ExplorerController:
     # --- the layout of one stock's rows ---
 
     def ordered_keys(self, symbol: str) -> list[str]:
-        """The stock's selectable rows, top to bottom: views, with its strategies just before STRATEGIES_BEFORE."""
-        keys = []
+        """The stock's selectable rows, top to bottom: its own row (the overview), then views, with its strategies
+        just before STRATEGIES_BEFORE."""
+        keys = [OVERVIEW]
         for key, _ in VIEWS:
             if key == STRATEGIES_BEFORE:
                 keys.extend(entry.key for entry in self.strategies[symbol])

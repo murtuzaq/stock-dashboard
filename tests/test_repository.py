@@ -62,3 +62,21 @@ def test_the_built_in_library_strategies_load():
     repository.ROOT = repository.Path(__file__).resolve().parents[1] / 'strategies'  # undone by monkeypatch
     names = [s.name for s in repository.library()]
     assert {'Long-Term Trend', 'MACD + Stoch RSI', 'ATR Swing Trade'} <= set(names)
+
+
+def test_every_built_in_library_strategy_is_documented_and_runs():
+    from conftest import random_walk
+    from prices import to_candles
+    from strategy import describe
+    from strategy.backtest import run
+    repository.ROOT = repository.Path(__file__).resolve().parents[1] / 'strategies'  # undone by monkeypatch
+    library = repository.library()
+    assert len(library) >= 12
+    daily, benchmark = random_walk(1500, seed=11), random_walk(1500, seed=12)
+    for strategy in library:
+        about = strategy.about
+        assert about.summary and about.style and about.why and about.caveats, strategy.name
+        assert about.references and all('(' in r and ')' in r for r in about.references), strategy.name  # (year)
+        assert describe(strategy)
+        result = run(strategy, to_candles(daily, '1D'), benchmark, daily.index[300], 'TEST')
+        assert result.metrics['end_capital'] > 0, strategy.name

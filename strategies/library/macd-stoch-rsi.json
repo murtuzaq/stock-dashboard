@@ -37,7 +37,7 @@
         },
         "op": "below",
         "right": {
-          "value": 50
+          "value": 50.0
         }
       }
     ]
@@ -81,5 +81,15 @@
     "slippage_pct": 0.05
   },
   "created": "2026-11-04T00:56:19",
-  "updated": "2026-11-04T00:56:19"
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "A dashboard example: in an uptrend (above the 200-day average), buy when MACD turns up while Stochastic RSI is not yet overbought; sell when MACD turns down or the uptrend breaks.",
+    "style": "Momentum \u00b7 weeks",
+    "why": "Pairs a trend filter with two momentum oscillators from standard texts: MACD (Appel) and Stochastic RSI (Chande & Kroll). Not a published system; see \"MACD Crossover with Trend Filter\" for the classic one.",
+    "caveats": "Made for this dashboard as a teaching example and not tested in any publication. Several conditions must line up, so it trades rarely.",
+    "references": [
+      "Appel, G. (2005). Technical Analysis: Power Tools for Active Investors. FT Prentice Hall.",
+      "Chande, T. S., & Kroll, S. (1994). The New Technical Trader. Wiley."
+    ]
+  }
 }

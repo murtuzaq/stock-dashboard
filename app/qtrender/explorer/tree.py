@@ -15,6 +15,7 @@ from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QAbstractItemView, QMenu, QTreeWidget, QTreeWidgetItem
 
+from core.dashboard.layout import OVERVIEW
 from core.explorer.controller import FOLDER, PORTFOLIO, STRATEGY, SYMBOL, VIEW, Node, Scope, TreeRow
 from core.explorer.entries import StrategyEntry
 from core.learn import ui_terms
@@ -22,7 +23,7 @@ from qtrender.learn import info_mode
 from qtrender.richtext import LINK_COLOR
 from core.strategies.service import MenuEntry
 
-KEY_ROLE = Qt.ItemDataRole.UserRole  # the view key, or 'strategy:<id>'
+KEY_ROLE = Qt.ItemDataRole.UserRole  # the view key, 'strategy:<id>', or OVERVIEW on a stock's own row
 KIND_ROLE = Qt.ItemDataRole.UserRole + 1  # SYMBOL, VIEW, FOLDER, STRATEGY or PORTFOLIO
 LIBRARY_ROLE = Qt.ItemDataRole.UserRole + 2
 PORTFOLIO_ROLE = Qt.ItemDataRole.UserRole + 3  # a portfolio row's id
@@ -102,7 +103,10 @@ class Explorer(QTreeWidget):
         else:
             parent = QTreeWidgetItem(self.portfolio_items[scope.portfolio], [scope.symbol])
         parent.setData(0, KIND_ROLE, SYMBOL)
+        parent.setData(0, KEY_ROLE, OVERVIEW)  # clicking the stock's name shows its company overview
+        parent.setToolTip(0, f'Click for the {scope.symbol} company overview')
         self.symbol_items[scope] = parent
+        self.items[(scope, OVERVIEW)] = parent
         for row in rows:
             if row.kind == FOLDER:
                 self.folders[scope] = self._add_folder(parent, row.label)

@@ -1,0 +1,63 @@
+{
+  "id": "lib-trend-filter-200",
+  "name": "200-Day Trend Filter (Faber)",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "below",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": null,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-05T01:05:03",
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "Own the stock while its price is above its 200-day (about 10-month) average; step aside when it closes below. Best run on monthly candles (Candle 1M), as Faber did.",
+    "style": "Trend following \u00b7 risk control \u00b7 months",
+    "why": "Mebane Faber's widely cited 2007 paper showed that holding an asset only while it is above its 10-month average gave returns similar to buy & hold with much smaller drawdowns, across US stocks and other asset classes back to 1900. Jeremy Siegel tested a 200-day average rule on the Dow with similar conclusions about risk, and Moskowitz, Ooi & Pedersen (2012) document \"time-series momentum\": assets that have been rising tend to keep rising for a while.",
+    "caveats": "Designed for broad indexes and asset classes; single stocks are noisier, so expect more false exits. On daily candles it trades far more often than intended. In a fast crash it reacts only after the fall has started, and it usually lags buy & hold in long bull markets.",
+    "references": [
+      "Faber, M. T. (2007). A Quantitative Approach to Tactical Asset Allocation. The Journal of Wealth Management, 9(4), 69-79.",
+      "Siegel, J. J. (2014). Stocks for the Long Run (5th ed.). McGraw-Hill.",
+      "Moskowitz, T. J., Ooi, Y. H., & Pedersen, L. H. (2012). Time Series Momentum. Journal of Financial Economics, 104(2), 228-250."
+    ]
+  }
+}

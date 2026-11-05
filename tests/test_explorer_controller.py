@@ -1,4 +1,5 @@
 """ExplorerController: open stocks, selection rules, refresh and right-click menus, through a fake tree."""
+from core.dashboard.layout import OVERVIEW
 from core.explorer.controller import FOLDER, PORTFOLIO, STRATEGY, SYMBOL, VIEW, ExplorerController, Node, Scope
 from core.portfolios import actions as portfolio_actions
 from portfolio import Portfolio
@@ -68,8 +69,10 @@ class FakeTree:
         self.current = (scope, key)
         self._report()
 
-    def click_symbol(self, symbol):
-        self.current = (Scope(None, symbol), None)
+    def click_symbol(self, symbol, ctrl=False):
+        scope = Scope(None, symbol)  # the real tree registers a stock's own row under the OVERVIEW key
+        self.selected = (self.selected if ctrl else []) + [(scope, OVERVIEW)]
+        self.current = (scope, OVERVIEW)
         self._report()
 
     def click_portfolio(self, portfolio_id):
@@ -84,8 +87,8 @@ class FakeTree:
     def _node(self, item):
         scope, key = item
         symbol = scope.symbol
-        if key is None:
-            return Node(symbol, None, SYMBOL, portfolio=scope.portfolio)
+        if key in (None, OVERVIEW):
+            return Node(symbol, key, SYMBOL, portfolio=scope.portfolio)
         if key in self._keys(symbol):
             library = next(e.is_library for e in self.entries[symbol] if e.key == key)
             return Node(symbol, key, STRATEGY, library, scope.portfolio)
@@ -126,12 +129,32 @@ def test_adding_a_known_symbol_does_not_rebuild_it_but_reselects_its_first_view(
     assert tree.rows == {} and emitted[-1] == ('IBM', ['price']) and controller.symbols == ['IBM', 'AAPL']
 
 
-def test_clicking_a_symbol_opens_its_first_view():
+def test_clicking_a_symbol_opens_its_company_overview_on_its_own():
     controller, tree, emitted, *_ = make()
     controller.add_symbol('IBM')
     tree.click('IBM', 'macd')
+    tree.click('IBM', 'atr', ctrl=True)
+    tree.click_symbol('IBM', ctrl=True)  # even with Ctrl held, the overview is shown alone
+    assert emitted[-1] == ('IBM', ['overview'])
+    assert tree.selected == [(Scope(None, 'IBM'), 'overview')]
+
+
+def test_ctrl_clicking_a_view_from_the_overview_replaces_it():
+    controller, tree, emitted, *_ = make()
+    controller.add_symbol('IBM')
     tree.click_symbol('IBM')
-    assert emitted[-1] == ('IBM', ['price'])
+    tree.click('IBM', 'macd', ctrl=True)
+    assert emitted[-1] == ('IBM', ['macd']) and tree.selected == [(Scope(None, 'IBM'), 'macd')]
+
+
+def test_refreshing_strategies_keeps_the_overview_selected():
+    strategies = {'IBM': [entry('a')]}
+    controller, tree, emitted, *_ = make(strategies)
+    controller.add_symbol('IBM')
+    tree.click_symbol('IBM')
+    strategies['IBM'] = [entry('a'), entry('b')]
+    controller.refresh_strategies()
+    assert emitted[-1] == ('IBM', ['overview']) and controller.selected == ['overview']
 
 
 def test_ctrl_click_stacks_views_in_top_to_bottom_order():

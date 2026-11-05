@@ -1,0 +1,70 @@
+{
+  "id": "lib-bollinger-bounce",
+  "name": "Bollinger Band Bounce",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "bollinger",
+          "output": "lower"
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "bollinger",
+          "output": "middle"
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": 8,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-05T01:05:03",
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "In a long-term uptrend, buy when the price closes back inside the lower Bollinger Band after dropping below it; sell when it reaches the middle band (the 20-day average), or at an 8% loss.",
+    "style": "Mean reversion \u00b7 days to weeks",
+    "why": "Bollinger Bands sit two standard deviations either side of a 20-day average, so closes outside them are unusually stretched. John Bollinger describes buying the return inside the lower band, in an uptrend, as a lower-risk entry, with the middle band as a natural first target.",
+    "caveats": "In a strong downtrend the price can \"walk\" down the lower band for weeks. Bollinger himself stresses the bands are a framework to combine with other evidence, not a system on their own.",
+    "references": [
+      "Bollinger, J. (2001). Bollinger on Bollinger Bands. McGraw-Hill.",
+      "Murphy, J. J. (1999). Technical Analysis of the Financial Markets. New York Institute of Finance."
+    ]
+  }
+}

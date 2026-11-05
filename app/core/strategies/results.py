@@ -20,10 +20,12 @@ def _colored(text: str, value: float) -> Span:
 
 
 def rules_line(strategy: Strategy) -> Line:
-    """Name, where it lives, then the rules in plain English."""
+    """Name, where it lives, its one-line summary (if any), then the rules in plain English."""
     where = 'library template' if strategy.symbol is None else strategy.symbol
-    return [Span(strategy.name, bold=True), plain(' '), Span(f'({where})', theme.MUTED), plain('\n'),
-            plain(describe(strategy))]
+    line = [Span(strategy.name, bold=True), plain(' '), Span(f'({where})', theme.MUTED), plain('\n')]
+    if strategy.about.summary:
+        line += [Span(strategy.about.summary, theme.MUTED), plain('\n')]
+    return line + [plain(describe(strategy))]
 
 
 def result_cards(result: BacktestResult) -> Line:

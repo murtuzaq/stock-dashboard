@@ -20,6 +20,9 @@ QHeaderView::section { background: #131722; color: #787b86; border: none; paddin
 QSplitter::handle { background: #2a2e39; }
 QLabel#placeholder { color: #787b86; font-size: 16px; }
 QLabel#chartTitle { font-size: 14px; font-weight: 600; }
+QLabel#overviewHeading { font-size: 18px; }
+QLabel#overviewSection { font-size: 13px; font-weight: 600; color: #d1d4dc; padding-top: 6px; border-bottom: 1px solid #2a2e39; }
+QScrollArea#overview, QScrollArea#overview > QWidget > QWidget { background: #131722; }
 QLabel#lastPrice { font-size: 14px; padding-left: 12px; }
 QLabel#summary { color: #787b86; padding: 2px 0 6px 0; }
 QTableView#historyTable { background: #131722; alternate-background-color: #171b26; border: none; gridline-color: #1e222d; }

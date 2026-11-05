@@ -1,0 +1,89 @@
+{
+  "id": "lib-relative-strength-momentum",
+  "name": "Relative Strength Momentum",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "rel_strength"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "rel_strength",
+          "output": "average",
+          "params": {
+            "days": 100
+          }
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "rel_strength"
+        },
+        "op": "crosses_below",
+        "right": {
+          "indicator": "rel_strength",
+          "output": "average",
+          "params": {
+            "days": 100
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "below",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": null,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-05T01:05:03",
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "Buy when the stock starts beating the S&P 500 (its relative-strength line crosses above its 100-day average) while in a long-term uptrend; sell when it starts lagging the market or falls below its 200-day average.",
+    "style": "Momentum \u00b7 months",
+    "why": "Momentum is one of the best-documented effects in finance: Jegadeesh & Titman (1993) showed that stocks that outperformed over the past 3-12 months kept outperforming for months afterwards. Gary Antonacci's \"dual momentum\" combines relative momentum (beating alternatives) with absolute momentum (going up at all), which is what the two conditions here do.",
+    "caveats": "The research ranks many stocks and holds the strongest; one stock's line crossing its average is a looser version. Momentum can reverse violently after market crashes (Daniel & Moskowitz, 2016). Needs S&P 500 data.",
+    "references": [
+      "Jegadeesh, N., & Titman, S. (1993). Returns to Buying Winners and Selling Losers: Implications for Stock Market Efficiency. The Journal of Finance, 48(1), 65-91.",
+      "Antonacci, G. (2014). Dual Momentum Investing. McGraw-Hill.",
+      "Daniel, K., & Moskowitz, T. J. (2016). Momentum Crashes. Journal of Financial Economics, 122(2), 221-247."
+    ]
+  }
+}

@@ -24,6 +24,7 @@ class WizardForm:
     buy: RuleGroup | None = None
     sell: RuleGroup | None = None
     exits: Exits | None = None
+    description: str = ''  # the strategy's one- or two-sentence summary
 
 
 class WizardSession:
@@ -34,7 +35,8 @@ class WizardSession:
 
     # --- starting ---
 
-    def start_new(self, symbol: str) -> None:
+    def start_new(self, symbol: str | None) -> None:
+        """A new strategy for this stock, or (symbol None) a new library template."""
         self.symbol, self.original, self.draft = symbol, None, None
 
     def start_edit(self, strategy: Strategy, context_symbol: str | None = None) -> None:
@@ -44,13 +46,18 @@ class WizardSession:
     # --- what to show ---
 
     @property
+    def is_template(self) -> bool:
+        """True when the strategy being built is a library template (not tied to one stock)."""
+        return self.original.symbol is None if self.original else self.symbol is None
+
+    @property
     def first_step(self) -> int:
         """Editing skips the Start page."""
         return NAME if self.original else START
 
     def title(self) -> str:
         if self.original is None:
-            return f'New strategy for {self.symbol}'
+            return 'New library template' if self.symbol is None else f'New strategy for {self.symbol}'
         suffix = ' (library template)' if self.original.symbol is None else ''
         return f'Edit "{self.original.name}"{suffix}'
 
@@ -59,7 +66,7 @@ class WizardSession:
         return f'Step {index + 1 - first} of {len(STEPS) - first}: {STEPS[index]}'
 
     def for_text(self) -> str:
-        if self.original is not None and self.original.symbol is None:
+        if self.is_template:
             return 'A reusable library template (not tied to one stock).'
         return f'For {self.symbol}.'
 
@@ -98,6 +105,7 @@ class WizardSession:
         self.draft = strategy  # review and save must act on the same strategy (same id)
         strategy.name = form.name.strip()
         strategy.buy, strategy.sell, strategy.exits = form.buy, form.sell, form.exits
+        strategy.about.summary = form.description.strip()  # its reasoning and references are kept as they were
         return strategy
 
     def save(self, form: WizardForm) -> Strategy:
@@ -106,11 +114,11 @@ class WizardSession:
         return strategy
 
     def review(self, form: WizardForm) -> Line:
-        if not self.original or self.original.symbol:
-            where = self.symbol
-        else:
-            where = 'library'
-        return [Span(form.name, bold=True), plain(f' — {where}\n\n'), plain(describe(self.build(form)))]
+        where = 'library' if self.is_template else self.symbol
+        line = [Span(form.name, bold=True), plain(f' — {where}\n\n')]
+        if form.description.strip():
+            line.append(plain(form.description.strip() + '\n\n'))
+        return line + [plain(describe(self.build(form)))]
 
     def _blank(self) -> Strategy:
         return Strategy('', RuleGroup('all', [DEFAULT_BUY]), RuleGroup('any', [DEFAULT_SELL]),

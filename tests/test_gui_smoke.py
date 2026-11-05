@@ -16,6 +16,20 @@ from core.explorer.controller import Node, Scope  # noqa: E402
 from strategy import Operand, repository  # noqa: E402
 
 
+def profile(symbol):
+    from company import CompanyProfile
+    return CompanyProfile(symbol, name=f'{symbol} Corporation', summary=f'{symbol} makes useful things.',
+                          quote_type='EQUITY', sector='Technology', industry='Software', price=100.0,
+                          market_cap=5e10, trailing_pe=40.0, revenue_growth=0.2, profit_margin=0.25,
+                          debt_to_equity=200.0, analysts=10, recommendation='buy', recommendation_mean=2.0)
+
+
+STORED_STOCKS = pd.DataFrame({
+    'symbol': ['IBM', 'TEST'], 'days': [500, 500], 'first_date': pd.to_datetime(['2024-01-01'] * 2),
+    'last_date': pd.to_datetime(['2025-12-01'] * 2), 'last_close': [250.0, 100.0], 'previous_close': [245.0, 101.0],
+    'checked_at': [1.79e9, 1.79e9]})
+
+
 def financials(symbol):
     index = pd.to_datetime(['2025-03-31', '2025-06-30', '2025-09-30', '2025-12-31'])
     figures = pd.DataFrame({'revenue': [1e9, 1.1e9, 1.2e9, 1.3e9], 'eps': [1.0, 1.1, 1.2, 1.3],
@@ -49,7 +63,9 @@ def window(app, tmp_path, monkeypatch):
     from learn import requests as info_requests
     monkeypatch.setattr(info_requests, 'FILE', tmp_path / 'info_requests.json')
     main_window = MainWindow(BackgroundLoader.immediate(), lambda symbol: random_walk(500, seed=len(symbol)),
-                             financials, preferences=MemoryPreferences())
+                             financials, preferences=MemoryPreferences(), profile_source=profile,
+                             stored_stocks_source=lambda: STORED_STOCKS.copy(),
+                             names_source=lambda: {'TEST': 'Test Corporation', 'IBM': 'IBM Corp'})
     main_window.messages, main_window.answers = messages, answers
     main_window.show()
     yield main_window
@@ -207,7 +223,8 @@ def test_clicking_a_symbol_row_and_the_context_menu_are_wired(window):
     window.explorer_controller.add_symbol('TEST')
     window.explorer.items[(Scope(None, 'TEST'), 'atr')].setSelected(True)
     window.explorer.setCurrentItem(window.explorer.symbol_items[Scope(None, 'TEST')])  # click the stock's own row
-    assert window.controller.shown == ['price']
+    assert window.controller.shown == ['overview']
+    assert [item.text(0) for item in window.explorer.selectedItems()] == ['TEST']  # the stock's row, nothing else
 
     menu = window.explorer.menu_source(Node('TEST', None, 'symbol'))
     assert menu[0].action == 'new' and menu[-1].text == 'Add to portfolio'
@@ -413,3 +430,192 @@ def test_removing_the_shown_stock_or_closing_its_portfolio_empties_the_chart_are
     show_it()
     window.explorer.action_chosen.emit('close_portfolio', Node('', None, 'portfolio', portfolio=portfolio.id), None)
     assert window.view_area.currentIndex() == 0 and window.controller.symbol is None
+
+
+# --- company overview ------------------------------------------------------------------------------------------
+
+def test_clicking_a_stock_shows_its_company_overview_with_likes_dislikes_and_best_strategy(window):
+    from strategy import Condition, Exits, Operand, RuleGroup, Strategy
+    saved = Strategy('Trend', RuleGroup('all', [Condition(Operand('close'), 'above', Operand('sma', params={'days': 50}))]),
+                     RuleGroup('any', [Condition(Operand('close'), 'below', Operand('sma', params={'days': 50}))]),
+                     Exits(stop_loss_pct=8), symbol='TEST')
+    repository.save(saved)
+    window.explorer_controller.add_symbol('TEST')
+    window.explorer.setCurrentItem(window.explorer.symbol_items[Scope(None, 'TEST')])
+    overview = window.view_area.views['overview']
+    assert window.view_area.title.text() == 'TEST · Company overview'
+    assert 'TEST Corporation' in overview.heading.text() and 'useful things' in overview.summary.text()
+    assert 'Sales are growing fast' in overview.likes.text() and 'Very profitable' in overview.likes.text()
+    assert 'Priced richly' in overview.dislikes.text() and 'a lot of debt' in overview.dislikes.text()
+    model = overview.model
+    assert model.rank_rows[0].strategy_id is None and model.rank_rows[1].strategy_id == saved.id  # buy & hold first
+    assert 'Trend' in overview.verdict.text()
+
+    overview.table.cellClicked.emit(1, 0)  # click the strategy's row: its backtest opens
+    assert window.controller.strategy_id == saved.id and window.controller.shown == ['strategy']
+
+
+def test_overview_without_a_profile_still_shows_the_strategy_comparison(window, monkeypatch):
+    from company import CompanyProfile
+    monkeypatch.setattr(window.controller, 'profile_source', lambda symbol: CompanyProfile(symbol))
+    window.explorer_controller.add_symbol('ETF')
+    window.explorer.setCurrentItem(window.explorer.symbol_items[Scope(None, 'ETF')])
+    overview = window.view_area.views['overview']
+    assert 'No company description' in overview.summary.text()
+    assert 'No strategies to compare' in overview.verdict.text()
+
+
+# --- Library menu ----------------------------------------------------------------------------------------------
+
+def test_library_menu_has_stocks_and_strategies(window):
+    library_menu = window.menu.actions()[2].menu()
+    assert library_menu.title() == '&Library'
+    assert [a.text() for a in library_menu.actions()] == ['&Stocks…', 'S&trategies…']
+
+
+def test_stock_library_lists_local_stocks_and_adds_one_to_a_portfolio(window):
+    from core.portfolios.service import PortfolioService
+    from PySide6.QtWidgets import QMenu
+    from qtrender.library.stock_library_panel import fill_menu
+    portfolio = PortfolioService().create_default()
+    window.menu.stocks_action.trigger()
+    panel = window.stock_library_panel
+    assert window.side_panel.isVisible() and panel.isVisible() and window.side_panel.windowTitle() == 'Stock Library'
+    assert [panel.table.item(r, 0).text() for r in range(panel.table.rowCount())] == ['IBM', 'TEST']
+    assert panel.table.item(0, 1).text() == 'IBM Corp' and panel.count.text() == '2 stocks in the library'
+
+    menu = QMenu()
+    picked = []
+    fill_menu(menu, panel.menu_source('IBM'), picked.append)
+    add_to = next(a for a in menu.actions() if a.text() == 'Add to portfolio')
+    assert [a.text() for a in add_to.menu().actions() if not a.isSeparator()] == ['Portfolio 1', 'New portfolio…']
+    panel.action_chosen.emit('library_add_to', 'IBM', portfolio.id)
+    assert PortfolioService().get(portfolio.id).symbols == ['IBM'] and 'Added IBM to "Portfolio 1"' in panel.notice.text()
+
+    panel.table.cellDoubleClicked.emit(1, 0)  # double-click TEST: it opens in the Explorer
+    assert Scope(None, 'TEST') in window.explorer_controller.scopes
+    panel.done_button.click()
+    assert not window.side_panel.isVisible()
+
+
+def test_stock_library_search_box_downloads_and_adds_a_stock(window):
+    from search import Catalog, Security
+    window.menu.stocks_action.trigger()
+    panel = window.stock_library_panel
+    msft = Security('MSFT', 'Microsoft', 'NASDAQ', False, ('microsoft',))
+    panel.search.controller.catalog_loaded(Catalog({'MSFT': msft}, [], frozenset()), input_has_focus=False)
+    panel.search.controller.choose(msft)
+    assert panel.notice.text().startswith('Added MSFT: 500 trading days')
+
+
+def test_strategy_library_creates_a_template_and_returns_to_the_library(window):
+    window.menu.strategies_action.trigger()
+    panel = window.strategy_library_panel
+    assert panel.isVisible() and window.side_panel.windowTitle() == 'Strategy Library'
+    panel.new_button.click()
+    wizard = window.wizard
+    assert wizard.isVisible() and wizard.title.text() == 'New library template'
+    wizard.next_button.click()  # Start: new
+    wizard.name.setText('Breakout')
+    for _ in range(4):
+        wizard.next_button.click()
+    [template] = repository.library()
+    assert template.name == 'Breakout' and template.symbol is None
+    assert panel.isVisible() and not wizard.isVisible()  # back in the library, which now lists it
+    assert 'Breakout' in [panel.tree.topLevelItem(0).child(i).text(0) for i in range(panel.tree.topLevelItem(0).childCount())]
+
+
+def test_strategy_library_backtests_a_template_on_the_stock_on_screen(window):
+    from strategy import Condition, Exits, RuleGroup, Strategy
+    template = Strategy('Template', RuleGroup('all', [Condition(Operand('close'), 'above', Operand('sma'))]),
+                        RuleGroup('any', []), Exits(stop_loss_pct=5))
+    repository.save(template)
+    window.explorer_controller.add_symbol('TEST')
+    window.menu.strategies_action.trigger()
+    panel = window.strategy_library_panel
+    panel.items[template.id].setSelected(True)
+    buttons = [panel.buttons.itemAt(i).widget() for i in range(panel.buttons.count()) if panel.buttons.itemAt(i).widget()]
+    assert [b.text() for b in buttons] == ['Backtest on TEST', 'Copy to another stock…', 'Edit…', 'Delete…']
+    buttons[0].click()
+    assert window.controller.strategy_id == template.id and window.controller.shown == ['strategy']
+
+
+def test_opening_a_library_page_asks_before_discarding_the_strategy_being_edited(window):
+    window.explorer_controller.add_symbol('TEST')
+    window.strategy_controller.handle('new', 'TEST', '')
+    window.answers['confirm'] = False
+    window.menu.stocks_action.trigger()
+    assert window.wizard.isVisible() and not window.stock_library_panel.isVisible()
+    window.answers['confirm'] = True
+    window.menu.stocks_action.trigger()
+    assert window.stock_library_panel.isVisible() and not window.wizard.isVisible()
+
+
+def test_switching_stocks_replaces_the_overview_facts_instead_of_stacking_them(window):
+    overview = window.view_area.views['overview']
+    for symbol in ('TEST', 'OTHER'):
+        window.explorer_controller.add_symbol(symbol)
+        window.explorer.setCurrentItem(window.explorer.symbol_items[Scope(None, symbol)])
+    shown = [overview.facts.itemAt(i).widget() for i in range(overview.facts.count())]
+    assert len(shown) == len(overview.model.facts)
+    stale = [w for w in overview.widget().findChildren(type(shown[0])) if w.parent() is None or
+             (w not in shown and w.isVisible() and w.layout() is not None and w.layout().count() == 2)]
+    assert stale == []  # the first stock's fact boxes are gone, not hidden behind the second's
+
+
+def test_strategy_library_buttons_are_rebuilt_cleanly_for_each_selection(window):
+    from strategy import Condition, Exits, RuleGroup, Strategy
+    for name, symbol in (('Template', None), ('Own', 'TEST')):
+        repository.save(Strategy(name, RuleGroup('all', [Condition(Operand('close'), 'above', Operand('sma'))]),
+                                 RuleGroup('any', []), Exits(stop_loss_pct=5), symbol=symbol))
+    window.menu.strategies_action.trigger()
+    panel = window.strategy_library_panel
+    for item in list(panel.items.values()) * 2:  # select each twice: the old buttons (and the spacer) are cleared
+        panel.tree.clearSelection()
+        item.setSelected(True)
+        texts = [panel.buttons.itemAt(i).widget().text() for i in range(panel.buttons.count())
+                 if panel.buttons.itemAt(i).widget()]
+        assert texts.count('Edit…') == 1 and texts[-1] == 'Delete…'
+
+
+def test_strategy_library_shows_why_a_strategy_can_work_and_its_references(window):
+    from strategy import About, Condition, Exits, RuleGroup, Strategy
+    template = Strategy('Golden Cross', RuleGroup('all', [Condition(Operand('sma', params={'days': 50}), 'crosses_above',
+                                                                    Operand('sma', params={'days': 200}))]),
+                        RuleGroup('any', []), Exits(stop_loss_pct=5),
+                        about=About('Buy when the 50-day crosses above the 200-day.', 'Trend following',
+                                    'Classic trend signal.', 'Lags at turns.', ['Murphy, J. J. (1999). Technical Analysis.']))
+    repository.save(template)
+    window.menu.strategies_action.trigger()
+    panel = window.strategy_library_panel
+    panel.items[template.id].setSelected(True)
+    text = panel.detail.text()
+    for expected in ('Golden Cross', 'Trend following', 'Buy when the 50-day', 'Why it can work', 'Classic trend signal',
+                     'Watch out for', 'Lags at turns', 'Rules', 'References', 'Murphy, J. J. (1999)'):
+        assert expected in text, expected
+    assert 'Buy when the 50-day' in panel.items[template.id].toolTip(0)
+
+
+def test_the_wizard_saves_a_description_and_keeps_a_copied_strategys_references(window):
+    from strategy import About, Condition, Exits, RuleGroup, Strategy
+    source = Strategy('Classic', RuleGroup('all', [Condition(Operand('close'), 'above', Operand('sma'))]),
+                      RuleGroup('any', []), Exits(stop_loss_pct=5),
+                      about=About('Original idea.', why='Because.', references=['Book (2001).']))
+    repository.save(source)
+    window.explorer_controller.add_symbol('TEST')
+    window.strategy_controller.handle('new', 'TEST', '')
+    wizard = window.wizard
+    item = next(wizard.existing.topLevelItem(i).child(0) for i in range(wizard.existing.topLevelItemCount())
+                if wizard.existing.topLevelItem(i).text(0) == 'Library')
+    wizard.existing.setCurrentItem(item)
+    wizard.next_button.click()  # copy it
+    assert wizard.description.toPlainText() == 'Original idea.'
+    wizard.description.setPlainText('My take on it.')
+    for _ in range(3):
+        wizard.next_button.click()
+    assert 'My take on it.' in wizard.review.text()
+    wizard.next_button.click()
+    [copy] = repository.for_symbol('TEST')
+    assert copy.about.summary == 'My take on it.' and copy.about.references == ['Book (2001).']
+    assert repository.get(source.id).about.summary == 'Original idea.'
+    assert 'My take on it.' in window.view_area.views['strategy'].rules.text()

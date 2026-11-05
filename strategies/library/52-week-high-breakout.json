@@ -1,0 +1,72 @@
+{
+  "id": "lib-52-week-high",
+  "name": "52-Week High Breakout",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "donchian",
+          "output": "upper",
+          "params": {
+            "days": 252
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "volume"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "volume_average"
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_below",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 50
+          }
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": 8,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-05T01:05:03",
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "Buy when the price closes at a new 52-week high on above-average volume; sell if it closes below its 50-day average or falls 8% below the entry price.",
+    "style": "Momentum / breakout \u00b7 weeks to months",
+    "why": "George & Hwang (2004) found that stocks trading near their 52-week high went on to outperform those far from it, and that this explained much of the momentum effect: investors anchor on the old high and are slow to price in good news. William O'Neil's CAN SLIM method likewise buys breakouts to new highs on strong volume and cuts every loss at 7-8%.",
+    "caveats": "Buying at a high feels wrong and often is: many breakouts reverse. The academic result is about portfolios of stocks ranked against each other, not timing one stock. O'Neil also requires strong earnings growth (see the company overview), which these rules do not check.",
+    "references": [
+      "George, T. J., & Hwang, C.-Y. (2004). The 52-Week High and Momentum Investing. The Journal of Finance, 59(5), 2145-2176.",
+      "O'Neil, W. J. (2009). How to Make Money in Stocks (4th ed.). McGraw-Hill."
+    ]
+  }
+}

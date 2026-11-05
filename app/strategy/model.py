@@ -138,6 +138,30 @@ class Costs:
 
 
 @dataclass
+class About:
+    """What a strategy is for, why it can work, and where it comes from: shown in the Strategy Library so the user
+    can judge how much to trust it. Every field is optional (a user's own strategy may only have a summary)."""
+    summary: str = ''  # one or two sentences: the idea in plain words
+    style: str = ''  # e.g. 'Trend following · weeks to months'
+    why: str = ''  # the reasoning and evidence behind it
+    caveats: str = ''  # when it fails, what it leaves out
+    references: list[str] = field(default_factory=list)  # books and papers, in citation form
+
+    @property
+    def is_empty(self) -> bool:
+        return not (self.summary or self.style or self.why or self.caveats or self.references)
+
+    def to_dict(self) -> dict:
+        return {'summary': self.summary, 'style': self.style, 'why': self.why, 'caveats': self.caveats,
+                'references': list(self.references)}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> About:
+        return cls(data.get('summary', ''), data.get('style', ''), data.get('why', ''), data.get('caveats', ''),
+                   list(data.get('references', [])))
+
+
+@dataclass
 class Strategy:
     name: str
     buy: RuleGroup
@@ -149,18 +173,23 @@ class Strategy:
     id: str = field(default_factory=new_id)
     created: str = field(default_factory=now)
     updated: str = field(default_factory=now)
+    about: About = field(default_factory=About)  # description, reasoning and sources
 
     def to_dict(self) -> dict:
-        return {'id': self.id, 'name': self.name, 'symbol': self.symbol, 'origin_id': self.origin_id,
+        data = {'id': self.id, 'name': self.name, 'symbol': self.symbol, 'origin_id': self.origin_id,
                 'buy': self.buy.to_dict(), 'sell': self.sell.to_dict(), 'exits': self.exits.to_dict(),
                 'costs': self.costs.to_dict(), 'created': self.created, 'updated': self.updated}
+        if not self.about.is_empty:
+            data['about'] = self.about.to_dict()
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> Strategy:
         return cls(name=data['name'], buy=RuleGroup.from_dict(data['buy']), sell=RuleGroup.from_dict(data['sell']),
                    exits=Exits.from_dict(data.get('exits', {})), costs=Costs.from_dict(data.get('costs', {})),
                    symbol=data.get('symbol'), origin_id=data.get('origin_id'), id=data.get('id') or new_id(),
-                   created=data.get('created') or now(), updated=data.get('updated') or now())
+                   created=data.get('created') or now(), updated=data.get('updated') or now(),
+                   about=About.from_dict(data.get('about', {})))
 
     def copy_for(self, symbol: str | None, name: str | None = None) -> Strategy:
         """An independent copy for another stock (or the library), remembering where it came from."""

@@ -1,0 +1,119 @@
+{
+  "id": "lib-minervini-trend-template",
+  "name": "Minervini Trend Template (simplified)",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 50
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "sma",
+          "params": {
+            "days": 50
+          }
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 150
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "sma",
+          "params": {
+            "days": 150
+          }
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "rel_strength"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "rel_strength",
+          "output": "average",
+          "params": {
+            "days": 50
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "donchian",
+          "output": "upper",
+          "params": {
+            "days": 20
+          }
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_below",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 50
+          }
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": 7,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-05T01:05:03",
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "Only buy stocks in a strong, orderly uptrend (price above the 50-day, 50 above 150, 150 above 200-day averages, and beating the S&P 500), on a breakout to a 20-day high. Sell below the 50-day average or at a 7% loss.",
+    "style": "Growth / momentum swing trading \u00b7 weeks to months",
+    "why": "Mark Minervini, a US Investing Championship winner, requires every stock he buys to pass his \"Trend Template\": stacked moving averages and strong relative strength, so you only trade leaders in stage-2 uptrends. He pairs it with strict losses of no more than about 7-8%, as O'Neil also teaches.",
+    "caveats": "Simplified: the full template also requires the 200-day average to be rising, the price to be at least 30% above its 52-week low and within 25% of its high, and Minervini buys specific base patterns (VCP) backed by earnings growth. These rules can't check those. Works best in bull markets; sits out (or gets stopped out) in bear markets.",
+    "references": [
+      "Minervini, M. (2013). Trade Like a Stock Market Wizard. McGraw-Hill.",
+      "Minervini, M. (2017). Think & Trade Like a Champion. Access Publishing Group.",
+      "O'Neil, W. J. (2009). How to Make Money in Stocks (4th ed.). McGraw-Hill."
+    ]
+  }
+}

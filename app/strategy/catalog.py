@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from indicators import atr, macd, relative_strength, rsi, sma, stoch_rsi
+from indicators import atr, bollinger, donchian, macd, relative_strength, rsi, sma, stoch_rsi
 from prices import days_to_candles, to_candles
 
 # Scales: values on the same scale can be compared with each other.
@@ -83,6 +83,14 @@ def _volume_average(candles, benchmark, p):
     return _single(candles['volume'].rolling(p['length']).mean())
 
 
+def _donchian(candles, benchmark, p):
+    return donchian(candles['high'], candles['low'], days_to_candles(p['days'], _candle_size(candles)))
+
+
+def _bollinger(candles, benchmark, p):
+    return bollinger(candles['close'], p['length'], p['deviations'])
+
+
 def _rel_strength(candles, benchmark, p):
     if benchmark is None or benchmark.empty:
         raise ValueError('Relative strength needs S&P 500 price data')
@@ -104,6 +112,11 @@ INDICATORS: dict[str, Indicator] = {i.key: i for i in [
                Param('k_smoothing', 'K smoothing', 3), Param('d_smoothing', 'D smoothing', 3))),
     Indicator('rsi', 'RSI', OSCILLATOR, {'value': 'RSI'}, _rsi, (Param('length', 'Length', 14),)),
     Indicator('atr', 'ATR', UNBOUNDED, {'value': 'ATR'}, _atr, (Param('length', 'Length', 14),)),
+    Indicator('donchian', 'Donchian channel', PRICE, {'upper': 'Highest high', 'lower': 'Lowest low'}, _donchian,
+              (Param('days', 'Days', 20, 2, 400),)),
+    Indicator('bollinger', 'Bollinger Bands', PRICE,
+              {'upper': 'Bollinger upper', 'middle': 'Bollinger middle', 'lower': 'Bollinger lower'}, _bollinger,
+              (Param('length', 'Length', 20, 2, 400), Param('deviations', 'Std devs', 2, 1, 5))),
     Indicator('volume', 'Volume', VOLUME, {'value': 'Volume'}, _price_column('volume')),
     Indicator('volume_average', 'Volume average', VOLUME, {'value': 'Volume average'}, _volume_average,
               (Param('length', 'Candles', 20),)),

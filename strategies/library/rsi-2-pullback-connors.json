@@ -1,0 +1,74 @@
+{
+  "id": "lib-rsi2-pullback",
+  "name": "RSI(2) Pullback (Connors)",
+  "symbol": null,
+  "origin_id": null,
+  "buy": {
+    "match": "all",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 200
+          }
+        }
+      },
+      {
+        "left": {
+          "indicator": "rsi",
+          "params": {
+            "length": 2
+          }
+        },
+        "op": "below",
+        "right": {
+          "value": 10
+        }
+      }
+    ]
+  },
+  "sell": {
+    "match": "any",
+    "conditions": [
+      {
+        "left": {
+          "indicator": "close"
+        },
+        "op": "crosses_above",
+        "right": {
+          "indicator": "sma",
+          "params": {
+            "days": 5
+          }
+        }
+      }
+    ]
+  },
+  "exits": {
+    "stop_loss_pct": null,
+    "take_profit_pct": null,
+    "atr_stop_multiple": null
+  },
+  "costs": {
+    "capital": 10000.0,
+    "commission": 0.0,
+    "slippage_pct": 0.05
+  },
+  "created": "2026-11-05T01:05:03",
+  "updated": "2026-11-05T01:05:03",
+  "about": {
+    "summary": "In a long-term uptrend (price above the 200-day average), buy after a sharp short-term dip (2-day RSI below 10); sell as soon as the price closes back above its 5-day average.",
+    "style": "Mean reversion \u00b7 a few days \u00b7 many small wins",
+    "why": "Larry Connors and Cesar Alvarez tested short-term pullbacks on many years of US stocks and ETFs and found that, in uptrends, buying short-term oversold readings and selling into the bounce had a high win rate. The idea: in a healthy uptrend, sharp dips tend to be temporary.",
+    "caveats": "Daily candles only (the settings are in days). Their research found stop-losses hurt this kind of system, so it has none, which means an occasional large loss when a dip keeps falling. Gains per trade are small, so commissions and slippage matter. Evidence comes from the authors' own tests rather than peer-reviewed research.",
+    "references": [
+      "Connors, L., & Alvarez, C. (2009). Short Term Trading Strategies That Work. TradingMarkets Publishing.",
+      "Wilder, J. W. (1978). New Concepts in Technical Trading Systems. Trend Research."
+    ]
+  }
+}

@@ -44,6 +44,16 @@ class StrategyService:
     def get(self, strategy_id: str) -> Strategy | None:
         return repository.get(strategy_id)
 
+    def for_symbol(self, symbol: str) -> list[Strategy]:
+        """Every strategy that can run on this stock: its own, then the library templates."""
+        return repository.for_symbol(symbol) + repository.library()
+
+    def library(self) -> list[Strategy]:
+        return repository.library()
+
+    def all_strategies(self) -> list[Strategy]:
+        return repository.all_strategies()
+
     def copy_here(self, strategy_id: str, symbol: str) -> Strategy:
         """Library template -> this stock's own copy."""
         return repository.copy(strategy_id, symbol)

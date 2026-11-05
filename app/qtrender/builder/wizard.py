@@ -4,7 +4,8 @@ Steps: 1 Start (new or copy) · 2 Name · 3 BUY rules · 4 SELL rules and exits 
 """
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDoubleSpinBox, QFrame, QGridLayout, QHBoxLayout,
-                               QLabel, QLineEdit, QPushButton, QRadioButton, QScrollArea, QSpinBox, QStackedWidget,
+                               QLabel, QLineEdit, QPlainTextEdit, QPushButton, QRadioButton, QScrollArea, QSpinBox,
+                               QStackedWidget,
                                QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from core.builder import rule_editor
@@ -319,6 +320,12 @@ class StrategyWizard(QWidget):
         self.for_label = QLabel()
         self.for_label.setObjectName('summary')
         layout.addWidget(self.for_label)
+        layout.addWidget(QLabel('Description (optional)'))
+        self.description = QPlainTextEdit()
+        self.description.setPlaceholderText('The idea in a sentence or two, e.g. "Buy pullbacks in an uptrend and sell '
+                                            'the bounce." Shown in the Strategy Library and tooltips.')
+        self.description.setMaximumHeight(110)
+        layout.addWidget(self.description)
         layout.addStretch()
         return page
 
@@ -377,6 +384,7 @@ class StrategyWizard(QWidget):
 
     def load_strategy(self, strategy: Strategy) -> None:
         self.name.setText(strategy.name)
+        self.description.setPlainText(strategy.about.summary)
         self.buy.set_group(strategy.buy)
         self.sell.set_group(strategy.sell)
         self.exits.set_exits(strategy.exits)
@@ -386,7 +394,7 @@ class StrategyWizard(QWidget):
         chosen = self.existing.selectedItems()
         source_id = chosen[0].data(0, Qt.ItemDataRole.UserRole) if chosen else None
         return WizardForm(self.copy_radio.isChecked(), source_id, self.name.text(), self.buy.group(),
-                          self.sell.group(), self.exits.exits())
+                          self.sell.group(), self.exits.exits(), self.description.toPlainText())
 
     def show_step(self, index: int, step_text: str, back_enabled: bool, next_text: str, for_text: str) -> None:
         self.pages.setCurrentIndex(index)
