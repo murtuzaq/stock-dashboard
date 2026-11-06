@@ -37,6 +37,9 @@ class FakeView:
     def clear_strategy(self):
         self.calls.append(('clear',))
 
+    def show_backtest(self, chart):
+        self.calls.append(('backtest', chart))
+
     def of(self, kind):
         return [call for call in self.calls if call[0] == kind]
 
@@ -209,3 +212,47 @@ def test_clear_with_nothing_showing_is_harmless():
     controller.clear()
     controller.set_range('1M')
     assert view.of('empty') and view.of('range') == []
+
+
+class StrategiesById(FakeStrategies):
+    def __init__(self, *strategies: Strategy) -> None:
+        super().__init__(strategies[0])
+        self.by_id = {strategy.id: strategy for strategy in strategies}
+
+    def get(self, strategy_id):
+        return self.by_id.get(strategy_id)
+
+
+def test_backtest_view_compares_every_selected_strategy(spec_example):
+    import dataclasses
+    other = dataclasses.replace(spec_example, id='other-id', name='Other')
+    controller, view = make_controller(strategies=StrategiesById(spec_example, other))
+    keys = ['backtest', f'strategy:{spec_example.id}', f'strategy:{other.id}']
+    controller.show_views('AAA', keys, '1D')
+    assert view.of('selection')[0][2].shown == ['backtest']  # no single-strategy panel for several strategies
+    assert controller.strategy_id is None and len(controller.strategy_ids) == 2
+    chart = view.of('backtest')[-1][1]
+    assert [series.label for series in chart.series[:2]] == ['MACD + Stoch RSI', 'Other']
+    assert chart.series[-1].is_hold and len({series.color for series in chart.series}) == 3
+    assert view.of('clear')  # no trade arrows without exactly one strategy
+
+
+def test_backtest_with_one_strategy_keeps_the_results_panel(spec_example):
+    controller, view = make_controller(strategies=FakeStrategies(spec_example))
+    controller.show_views('AAA', ['backtest', f'strategy:{spec_example.id}'], '1D')
+    assert view.of('selection')[0][2].shown == ['backtest', 'strategy']
+    assert view.of('strategy') and len(view.of('backtest')[-1][1].series) == 2  # the strategy + buy & hold
+
+
+def test_backtest_without_strategies_asks_the_view_for_its_hint():
+    controller, view = make_controller()
+    controller.show_views('AAA', ['backtest'], '1D')
+    assert view.of('backtest')[-1][1] is None
+
+
+def test_backtest_results_are_cached_across_refreshes(spec_example):
+    controller, view = make_controller(strategies=FakeStrategies(spec_example))
+    controller.show_views('AAA', ['backtest', f'strategy:{spec_example.id}'], '1D')
+    first = len(controller._results)
+    controller.refresh_strategy()
+    assert len(controller._results) == first == 1

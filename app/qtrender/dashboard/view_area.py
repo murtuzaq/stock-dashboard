@@ -20,7 +20,9 @@ from core.common.formatting import plain, Span
 from core.common.theme import MUTED
 from core.dashboard.layout import PRICE_CHARTS, SMA_HOSTS, PanelLayout
 from prices import DEFAULT_RANGE, RANGES
+from core.backtest.model import BacktestChart
 from qtrender.dashboard.panels.atr_view import AtrView
+from qtrender.dashboard.panels.backtest_view import BacktestView
 from qtrender.dashboard.chart_view import CandleChart, TimePlot
 from qtrender.dashboard.panels.growth_view import GrowthView
 from qtrender.dashboard.panels.history_view import HistoryView
@@ -83,10 +85,10 @@ class ViewArea(QStackedWidget):
                       'price': PriceView(), 'candles': CandleChart(), 'sma': SmaView(), 'volume': VolumeView(),
                       'macd': MacdView(), 'stoch_rsi': StochRsiView(), 'atr': AtrView(),
                       'rel_strength': RelStrengthView(), 'growth': GrowthView(loader, financials_source),
-                      'strategy': StrategyView(), 'history': HistoryView()}
+                      'backtest': BacktestView(), 'strategy': StrategyView(), 'history': HistoryView()}
         self.sma_overlays = {key: SmaLines(self.views[key]) for key in SMA_HOSTS}
         self.trade_overlays = {key: TradeOverlay(chart_of(widget), key in PRICE_CHARTS)
-                               for key, widget in self.views.items() if chart_of(widget) and key != 'strategy'}
+                               for key, widget in self.views.items() if chart_of(widget) and key not in ('strategy', 'backtest')}
         self.views['strategy'].costs_changed.connect(self.costs_changed)
         self.views['strategy'].edit_requested.connect(self.edit_strategy)
         self.views['overview'].strategy_chosen.connect(self.strategy_chosen)
@@ -180,6 +182,9 @@ class ViewArea(QStackedWidget):
                 overlay.show(result, candles)
             else:
                 overlay.clear()
+
+    def show_backtest(self, chart: BacktestChart | None) -> None:
+        self.views['backtest'].show_chart(chart)
 
     def clear_strategy(self) -> None:
         for overlay in self.trade_overlays.values():

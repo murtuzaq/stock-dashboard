@@ -13,10 +13,11 @@ import pandas as pd
 from company import CompanyProfile, load_profile
 from core.common import theme
 from core.common.background import BackgroundLoader
+from core.backtest.model import BacktestChart, backtest_chart
 from core.dashboard.panels import BENCHMARK
 from core.overview.model import OverviewModel, overview_model, rank_strategies
 from core.strategies.service import StrategyService
-from core.dashboard.layout import (OVERVIEW, OVERVIEW_LABEL, STRATEGY_VIEW, VIEWS, PanelLayout, arrange,
+from core.dashboard.layout import (BACKTEST, OVERVIEW, OVERVIEW_LABEL, STRATEGY_VIEW, VIEWS, PanelLayout, arrange,
                                    is_strategy_key, strategy_id_of)
 from prices import DEFAULT_RANGE, RANGE_NAMES, load_daily, range_change, range_start, to_candles
 from strategy import Costs, Strategy
@@ -44,6 +45,8 @@ class DashboardView(Protocol):
     def show_range(self, start: pd.Timestamp | None, header: HeaderModel | None) -> None: ...
     def show_strategy(self, strategy: Strategy, result: BacktestResult, candles: pd.DataFrame) -> None: ...
     def clear_strategy(self) -> None: ...
+    def show_backtest(self, chart: BacktestChart | None) -> None:
+        """The comparison of every selected strategy, or (None) a hint to select some."""
     def show_overview(self, model: OverviewModel | None, status: str = '') -> None:
         """The company overview, or (model None) a status line such as 'Loading…'."""
 
@@ -79,7 +82,8 @@ class DashboardController:
         self.benchmark = pd.DataFrame()
         self.candles = pd.DataFrame()
         self.start: pd.Timestamp | None = None  # first day of the selected range
-        self.strategy_id: str | None = None  # the strategy selected in the Explorer, if any
+        self.strategy_id: str | None = None  # the strategy selected in the Explorer, if exactly one is
+        self.strategy_ids: list[str] = []  # every strategy selected (several only while Backtest is selected)
         self._results: dict[tuple, BacktestResult] = {}  # by (symbol, rules hash, candle size, start)
 
     # --- what to show ---
@@ -88,16 +92,24 @@ class DashboardController:
         """Show the selected views; a selected strategy ('strategy:<id>') shows its results panel and trades."""
         self.view_keys = view_keys
         strategy_keys = [key for key in view_keys if is_strategy_key(key)]
-        self.strategy_id = strategy_id_of(strategy_keys[0]) if strategy_keys else None
-        strategy = self.strategies.get(self.strategy_id) if self.strategy_id else None
+        self.strategy_ids = [strategy_id_of(key) for key in strategy_keys]
+        # The results panel and trade arrows belong to a single strategy; with several, only the Backtest chart shows.
+        self.strategy_id = self.strategy_ids[0] if len(self.strategy_ids) == 1 else None
 
         labels = dict(VIEWS) | {OVERVIEW: OVERVIEW_LABEL}
-        if strategy:
-            labels[strategy_keys[0]] = f'Strategy "{strategy.name}"'
+        for key in strategy_keys:
+            strategy = self.strategies.get(strategy_id_of(key))
+            if strategy:
+                labels[key] = f'Strategy "{strategy.name}"'
         title = f'{symbol} · {" + ".join(labels.get(key, key) for key in view_keys)}'
         if view_keys != [OVERVIEW]:  # the overview doesn't depend on the candle size
             title += f' · {candle_size}'
-        selected = [STRATEGY_VIEW if is_strategy_key(key) else key for key in view_keys]
+        selected = []
+        for key in view_keys:
+            if not is_strategy_key(key):
+                selected.append(key)
+            elif self.strategy_id:
+                selected.append(STRATEGY_VIEW)
         layout = arrange(selected)
         self.shown = layout.shown
         self.view.show_selection(title, layout)
@@ -120,7 +132,7 @@ class DashboardController:
 
     def clear(self) -> None:
         """Nothing is selected any more (e.g. the stock being shown was removed): show the empty chart area."""
-        self.symbol, self.view_keys, self.shown, self.strategy_id = None, [], [], None
+        self.symbol, self.view_keys, self.shown, self.strategy_id, self.strategy_ids = None, [], [], None, []
         self.candles, self.start = pd.DataFrame(), None
         self.view.show_empty()
 
@@ -205,16 +217,33 @@ class DashboardController:
 
     # --- strategy backtest ---
 
-    def refresh_strategy(self) -> None:
-        """Backtest the selected strategy (cached) and show its results and trades on the visible charts."""
-        strategy = self.strategies.get(self.strategy_id) if self.strategy_id else None
-        if strategy is None or self.candles.empty or self.start is None:
-            self.view.clear_strategy()
-            return
+    def _backtest_of(self, strategy: Strategy) -> BacktestResult:
+        """The strategy's backtest on the candles showing, run once and then cached."""
         key = (self.symbol, strategy_hash(strategy), self.candle_size, self.start)
         if key not in self._results:
             self._results[key] = run_backtest(strategy, self.candles, self.benchmark, self.start, self.symbol)
-        self.view.show_strategy(strategy, self._results[key], self.candles)
+        return self._results[key]
+
+    def refresh_strategy(self) -> None:
+        """Backtest the selected strategy (cached) and show its results and trades on the visible charts; then update
+        the Backtest chart, which compares every selected strategy."""
+        strategy = self.strategies.get(self.strategy_id) if self.strategy_id else None
+        if strategy is None or self.candles.empty or self.start is None:
+            self.view.clear_strategy()
+        else:
+            self.view.show_strategy(strategy, self._backtest_of(strategy), self.candles)
+        self.refresh_backtest()
+
+    def refresh_backtest(self) -> None:
+        """Show every selected strategy's account value on the Backtest chart, if that view is selected."""
+        if BACKTEST not in self.shown:
+            return
+        if self.candles.empty or self.start is None:
+            self.view.show_backtest(None)
+            return
+        strategies = [self.strategies.get(strategy_id) for strategy_id in self.strategy_ids]
+        runs = [(strategy, self._backtest_of(strategy)) for strategy in strategies if strategy]
+        self.view.show_backtest(backtest_chart(runs))
 
     def update_costs(self, costs: Costs) -> None:
         """The user edited capital / commission / slippage on the results panel."""

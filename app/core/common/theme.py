@@ -18,6 +18,8 @@ AVERAGE_COLOR = '#f7c948'
 EQUITY_COLOR = '#2962ff'
 HOLD_COLOR = '#787b86'
 SMA_COLORS = ('#2962ff', '#f7c948', '#e040fb')
+# One colour per strategy line on the Backtest chart (grey is kept for buy & hold); repeats after eight.
+STRATEGY_COLORS = ('#2962ff', '#ff6d00', '#26a69a', '#e040fb', '#f7c948', '#00bcd4', '#ef5350', '#8bc34a')
 
 # MACD histogram, as on TradingView: strong when the bar grows, pale when it shrinks.
 ABOVE_GROWING, ABOVE_SHRINKING = '#26a69a', '#b2dfdb'

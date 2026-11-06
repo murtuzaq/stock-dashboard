@@ -4,7 +4,8 @@ from dataclasses import dataclass
 # Views available under every symbol, in the order they stack. Add RSI, moving averages, etc. here later.
 VIEWS = [('price', 'Price'), ('candles', 'Candles'), ('sma', 'SMA 50/150/200'), ('volume', 'Volume'),
          ('macd', 'MACD'), ('stoch_rsi', 'Stoch RSI'), ('atr', 'ATR'), ('rel_strength', 'Rel. Strength'),
-         ('growth', 'Revenue/EPS Growth'), ('history', 'History')]
+         ('growth', 'Revenue/EPS Growth'), ('backtest', 'Backtest'), ('history', 'History')]
+BACKTEST = 'backtest'  # the chart comparing the account value of every selected strategy
 STRATEGIES_BEFORE = 'history'  # the Strategies folder sits just above this view
 STRATEGY_PREFIX = 'strategy:'  # view key for a strategy: 'strategy:<id>'
 STRATEGY_VIEW = 'strategy'  # the results panel shown when a strategy is selected
@@ -18,7 +19,7 @@ TIMEFRAMES = ['1D', '1W', '2W', '1M', '3M']
 PANEL_ORDER = [OVERVIEW] + [key for key, _ in VIEWS[:-1]] + [STRATEGY_VIEW, VIEWS[-1][0]]
 # Share of the height each view gets when stacked (price charts get more room than indicators).
 HEIGHT_WEIGHTS = {'overview': 4, 'price': 3, 'candles': 3, 'sma': 3, 'volume': 2, 'macd': 2, 'stoch_rsi': 2, 'atr': 2,
-                  'rel_strength': 2, 'growth': 3, 'strategy': 4, 'history': 3}
+                  'rel_strength': 2, 'growth': 3, 'backtest': 4, 'strategy': 4, 'history': 3}
 # Charts the moving averages are drawn on when SMA is selected together with them.
 SMA_HOSTS = ('price', 'candles')
 # Charts that get BUY/SELL arrows and entry lines; the others get signal lines.

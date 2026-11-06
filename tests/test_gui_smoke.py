@@ -619,3 +619,24 @@ def test_the_wizard_saves_a_description_and_keeps_a_copied_strategys_references(
     assert copy.about.summary == 'My take on it.' and copy.about.references == ['Book (2001).']
     assert repository.get(source.id).about.summary == 'Original idea.'
     assert 'My take on it.' in window.view_area.views['strategy'].rules.text()
+
+
+def test_backtest_chart_draws_a_line_per_selected_strategy_plus_buy_and_hold(window):
+    from strategy import Condition, Exits, RuleGroup, Strategy
+    for name, days in (('Fast', 20), ('Slow', 100)):
+        repository.save(Strategy(name, RuleGroup('all', [Condition(Operand('close'), 'above',
+                                                                    Operand('sma', params={'days': days}))]),
+                                 RuleGroup('any', [Condition(Operand('close'), 'below',
+                                                             Operand('sma', params={'days': days}))]),
+                                 Exits(stop_loss_pct=8), symbol='TEST'))
+    window.explorer_controller.add_symbol('TEST')
+    window.explorer_controller.refresh_strategies()
+    window.explorer.clearSelection()
+    window.explorer.items[(Scope(None, 'TEST'), 'backtest')].setSelected(True)
+    for (scope, key), item in window.explorer.items.items():
+        if key.startswith('strategy:'):
+            item.setSelected(True)
+    assert 'backtest' in window.controller.shown and 'strategy' not in window.controller.shown
+    plot = window.view_area.views['backtest'].plot_widget
+    assert len(plot.lines) == len(window.controller.strategy_ids) + 1 >= 3
+    assert 'Buy &amp; hold' in window.view_area.views['backtest'].legend.text()  # the label is rich text (HTML)

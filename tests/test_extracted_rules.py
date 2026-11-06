@@ -144,3 +144,9 @@ def test_without_a_clicked_strategy_the_first_selected_one_stays():
 
 def test_nothing_selected_resolves_to_nothing():
     assert resolve_selection(entries(('price', 'view', False)), 'price') == []
+
+
+def test_the_backtest_view_keeps_every_selected_strategy():
+    rows = entries(('price', 'view', True), ('backtest', 'view', True), ('strategy:a', 'strategy', True),
+                   ('strategy:b', 'strategy', True), ('strategy:c', 'strategy', False))
+    assert resolve_selection(rows, 'strategy:b') == ['price', 'backtest', 'strategy:a', 'strategy:b']
