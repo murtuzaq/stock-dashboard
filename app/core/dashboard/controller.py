@@ -15,6 +15,7 @@ from core.common import theme
 from core.common.background import BackgroundLoader
 from core.backtest.model import BacktestChart, backtest_chart
 from core.dashboard.panels import BENCHMARK
+from core.explorer.best import BestStrategy, best_strategy
 from core.overview.model import OverviewModel, overview_model, rank_strategies
 from core.strategies.service import StrategyService
 from core.dashboard.layout import (BACKTEST, OVERVIEW, OVERVIEW_LABEL, STRATEGY_VIEW, VIEWS, PanelLayout, arrange,
@@ -83,8 +84,11 @@ class DashboardController:
         self.candles = pd.DataFrame()
         self.start: pd.Timestamp | None = None  # first day of the selected range
         self.strategy_id: str | None = None  # the strategy selected in the Explorer, if exactly one is
-        self.strategy_ids: list[str] = []  # every strategy selected (several only while Backtest is selected)
+        self.strategy_ids: list[str] = []  # every strategy selected in the Explorer
         self._results: dict[tuple, BacktestResult] = {}  # by (symbol, rules hash, candle size, start)
+        self._unrunnable: set[tuple] = set()  # the same keys, for strategies that cannot run on this data
+        self.on_best_strategy: Callable[[str, BestStrategy | None], None] | None = None  # (symbol, its best strategy)
+        self._starred: set[str] = set()  # symbols the Explorer currently shows a best strategy for
 
     # --- what to show ---
 
@@ -93,7 +97,7 @@ class DashboardController:
         self.view_keys = view_keys
         strategy_keys = [key for key in view_keys if is_strategy_key(key)]
         self.strategy_ids = [strategy_id_of(key) for key in strategy_keys]
-        # The results panel and trade arrows belong to a single strategy; with several, only the Backtest chart shows.
+        # The results panel and trade arrows belong to a single strategy; with two or more, only the comparison chart.
         self.strategy_id = self.strategy_ids[0] if len(self.strategy_ids) == 1 else None
 
         labels = dict(VIEWS) | {OVERVIEW: OVERVIEW_LABEL}
@@ -110,6 +114,8 @@ class DashboardController:
                 selected.append(key)
             elif self.strategy_id:
                 selected.append(STRATEGY_VIEW)
+            elif BACKTEST not in selected:  # two or more strategies: one comparison chart, where the first one sits
+                selected.append(BACKTEST)
         layout = arrange(selected)
         self.shown = layout.shown
         self.view.show_selection(title, layout)
@@ -217,9 +223,12 @@ class DashboardController:
 
     # --- strategy backtest ---
 
+    def _result_key(self, strategy: Strategy) -> tuple:
+        return (self.symbol, strategy_hash(strategy), self.candle_size, self.start)
+
     def _backtest_of(self, strategy: Strategy) -> BacktestResult:
         """The strategy's backtest on the candles showing, run once and then cached."""
-        key = (self.symbol, strategy_hash(strategy), self.candle_size, self.start)
+        key = self._result_key(strategy)
         if key not in self._results:
             self._results[key] = run_backtest(strategy, self.candles, self.benchmark, self.start, self.symbol)
         return self._results[key]
@@ -233,6 +242,7 @@ class DashboardController:
         else:
             self.view.show_strategy(strategy, self._backtest_of(strategy), self.candles)
         self.refresh_backtest()
+        self.refresh_best()
 
     def refresh_backtest(self) -> None:
         """Show every selected strategy's account value on the Backtest chart, if that view is selected."""
@@ -244,6 +254,52 @@ class DashboardController:
         strategies = [self.strategies.get(strategy_id) for strategy_id in self.strategy_ids]
         runs = [(strategy, self._backtest_of(strategy)) for strategy in strategies if strategy]
         self.view.show_backtest(backtest_chart(runs))
+
+    # --- the best strategy of the stock on screen (the star in the Explorer) ---
+
+    def refresh_best(self) -> None:
+        """Backtest every strategy listed for this stock over the range on screen, then tell the Explorer which one
+        did best. The backtests run in the background (there can be a dozen) and are cached like any other, so
+        opening one of them afterwards is instant. Only what is not cached yet is run."""
+        if self.on_best_strategy is None or self.symbol is None or self.candles.empty or self.start is None:
+            return
+        symbol, candle_size, start = self.symbol, self.candle_size, self.start
+        candles, benchmark = self.candles, self.benchmark
+        keyed = [(self._result_key(strategy), strategy) for strategy in self.strategies.for_symbol(symbol)]
+        missing = [(key, strategy) for key, strategy in keyed if key not in self._results
+                   and key not in self._unrunnable]
+        if not missing:
+            self._announce_best(symbol, [(key, strategy) for key, strategy in keyed])
+            return
+
+        def work() -> tuple[dict, set]:
+            done, failed = {}, set()
+            for key, strategy in missing:
+                try:
+                    done[key] = run_backtest(strategy, candles, benchmark, start, symbol)
+                except ValueError:  # it cannot run on this data (for example it needs the S&P 500 and that is missing)
+                    failed.add(key)
+            return done, failed
+
+        self.loader.run(work, lambda outcome: self._best_ready(symbol, candle_size, start, outcome),
+                        lambda error: None)
+
+    def _best_ready(self, symbol: str, candle_size: str, start: pd.Timestamp, outcome: tuple[dict, set]) -> None:
+        done, failed = outcome
+        self._results.update(done)  # valid whatever the user has moved on to
+        self._unrunnable |= failed
+        if (symbol, candle_size, start) != (self.symbol, self.candle_size, self.start):
+            return  # the stock or range changed while this ran: that change starts its own run
+        keyed = [(self._result_key(strategy), strategy) for strategy in self.strategies.for_symbol(symbol)]
+        self._announce_best(symbol, keyed)
+
+    def _announce_best(self, symbol: str, keyed: list[tuple[tuple, Strategy]]) -> None:
+        ranked = [Ranked(strategy, self._results[key]) for key, strategy in keyed if key in self._results]
+        for other in self._starred - {symbol}:  # their star was for another range: it would mislead
+            self.on_best_strategy(other, None)
+        best = best_strategy(ranked, self.range)
+        self.on_best_strategy(symbol, best)
+        self._starred = {symbol} if best else set()
 
     def update_costs(self, costs: Costs) -> None:
         """The user edited capital / commission / slippage on the results panel."""

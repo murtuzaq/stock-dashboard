@@ -19,7 +19,7 @@ def strategy_entries(symbol: str) -> list[StrategyEntry]:
         rules = '\n\n'.join(part for part in (strategy.about.summary, describe(strategy)) if part)
         if strategy.symbol is None:
             tooltip = (f'Library template (try it on {symbol}; right-click to copy and customise)\n\n{rules}\n\n'
-                       'Library > Strategies explains why it can work, with references.')
+                       'Tools > Strategies explains why it can work, with references.')
             entries.append(StrategyEntry(strategy_key(strategy.id), f'{strategy.name} · library', tooltip, True))
         else:
             entries.append(StrategyEntry(strategy_key(strategy.id), strategy.name, rules, False))

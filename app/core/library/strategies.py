@@ -1,4 +1,4 @@
-"""Library > Strategies: every saved strategy in one place, to browse, try on a stock, copy, edit or create.
+"""Tools > Strategies: every saved strategy in one place, to browse, try on a stock, copy, edit or create.
 
 Library templates come first (they work on any stock), then each stock's own strategies. The actions themselves
 (wizard, copy, delete) are the same ones the Explorer menu uses (core.strategies.controller); this controller

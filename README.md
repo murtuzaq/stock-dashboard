@@ -84,15 +84,15 @@ Click a stock's **name** in the Explorer (the row above Price) to see:
 The profile is stored in `data/prices.db` (table `documents`) and refreshed weekly. Past results don't guarantee
 future ones, and the best of several strategies is partly luck: use it as a starting point.
 
-## Library menu
+## Tools menu
 
-**Library > Stocks…** (Ctrl+Shift+S) opens the Stock Library on the right: every stock whose prices are stored on this
+**Tools > Stocks…** (Ctrl+Shift+S) opens the Stock Library on the right: every stock whose prices are stored on this
 computer, with company name, last close, day change, how far back its prices go, and when they were last updated.
 A stock joins the library the first time its prices are downloaded (searching it anywhere does that); use the
 panel's search box to add more. **Right-click** a stock to open it or *Add to portfolio >* any saved portfolio (or a
 new one); **double-click** to open it.
 
-**Library > Strategies…** (Ctrl+Shift+T) opens the Strategy Library: library templates first, then each stock's own
+**Tools > Strategies…** (Ctrl+Shift+T) opens the Strategy Library: library templates first, then each stock's own
 strategies. Pick one to read its rules and act on it: *Backtest on <the stock on screen>* (another stock's strategy
 is copied first), *Copy to another stock…*, *Save to Library*, *Edit…*, *Delete…*. **+ New template…** opens the
 Strategy Builder for a template that works on any stock; when you save or cancel, you are back in the library.
@@ -176,6 +176,14 @@ so the data is available for backtesting and charts open instantly.
   its data), the symbol's full history is downloaded again so everything stays consistent.
 - Dividends and splits are stored too (`dividend`, `split` columns), for total-return backtests later.
 
+The **Download / update** tab of **Tools > Stocks…** fills the database for many stocks at once (an index, an exchange, your portfolios,
+stocks you pick, or every stock already stored, to bring them up to date). It lists the stocks coloured by state
+(green up to date, yellow out of date, red failed, grey no data at Yahoo) with a filter for the ones still to do. It
+fetches one stock every 15-25 seconds so Yahoo is never hit hard, backs off if Yahoo says "too many requests", and only
+runs while the Stock Library is open (closing it stops it; Start continues where it left off). Anything that looks at many
+stocks, such as testing a strategy across an index, should read with `prices.load_stored(symbol)`, which never
+contacts Yahoo.
+
 Tables: `daily(symbol, date, open, high, low, close, volume, dividend, split)` and
 `symbols(symbol, checked_at)`. To read it in your own scripts:
 
@@ -200,6 +208,13 @@ templates (grey, "· library"), which you can try on any stock.
   trades, win rate, max drawdown, time in market), an equity curve against buy & hold, and every trade
   (signal and fill dates, prices, P/L, exit reason; an open position is shown as unrealized).
   Capital, commission and slippage are editable on the panel and saved with the strategy.
+- **The best strategy is starred** (★, bold, gold) in each stock's Strategies folder once its prices are loaded: the
+  one with the highest return over the range selected on screen, so the star can move when you change the range or
+  candle size. It must also have beaten buy & hold: if even the best did no better than holding the stock, or there
+  is no clear winner, nothing is starred. Hover the starred row to see its return against buy & hold.
+- **Ctrl+click two or more strategies** to compare them: instead of the results panel you get one chart of how
+  much each would have grown from its starting cash, with a dashed buy & hold line. **Hover a line** to see that
+  strategy's date, value and return so far, its trades, win rate and drawdown. One strategy shows the full results.
 - **Ctrl+click Candles, MACD, etc.** to stack them with the strategy: every chart shows the trades
   (▲ BUY / ▼ SELL at the signal candle, fill dots, entry line, stop/target levels, green/red shading).
 - **Right-click** a stock or the folder: *New Strategy…*. Right-click a strategy: *Edit…, Duplicate,
@@ -244,7 +259,7 @@ app/
     searchbar/     SearchController + SearchView, catalogue state and filter
     portfolios/    PortfolioController (File menu, rename, right-click actions), AddStockController, service
     overview/      the company overview model (facts, likes/dislikes, strategy comparison and verdict)
-    library/       StockLibraryController and StrategyLibraryController (the Library menu's panels)
+    library/       StockLibraryController and StrategyLibraryController (the Tools menu's panels)
     learn/         InfoController (Info Wizard on/off, history, requests), UI-to-topic map, text linking
   qtrender/                               the only Qt / pyqtgraph code
     dashboard/     view area, chart building blocks, trade overlay, panels/ (one widget per view)

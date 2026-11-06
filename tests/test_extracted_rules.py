@@ -131,22 +131,12 @@ def test_views_stack_in_order_and_unselected_ones_are_left_out():
     assert resolve_selection(rows, 'atr') == ['price', 'atr']
 
 
-def test_the_strategy_just_clicked_wins_over_an_earlier_one():
-    rows = entries(('price', 'view', True), ('strategy:a', 'strategy', True), ('strategy:b', 'strategy', True))
-    assert resolve_selection(rows, 'strategy:b') == ['price', 'strategy:b']
-
-
-def test_without_a_clicked_strategy_the_first_selected_one_stays():
-    rows = entries(('price', 'view', True), ('strategy:a', 'strategy', True), ('strategy:b', 'strategy', True))
-    assert resolve_selection(rows, 'price') == ['price', 'strategy:a']
-    assert resolve_selection(rows, None) == ['price', 'strategy:a']
+def test_every_selected_strategy_stays_selected():
+    rows = entries(('price', 'view', True), ('strategy:a', 'strategy', True), ('strategy:b', 'strategy', True),
+                   ('strategy:c', 'strategy', False))
+    assert resolve_selection(rows, 'strategy:b') == ['price', 'strategy:a', 'strategy:b']
+    assert resolve_selection(rows, None) == ['price', 'strategy:a', 'strategy:b']
 
 
 def test_nothing_selected_resolves_to_nothing():
     assert resolve_selection(entries(('price', 'view', False)), 'price') == []
-
-
-def test_the_backtest_view_keeps_every_selected_strategy():
-    rows = entries(('price', 'view', True), ('backtest', 'view', True), ('strategy:a', 'strategy', True),
-                   ('strategy:b', 'strategy', True), ('strategy:c', 'strategy', False))
-    assert resolve_selection(rows, 'strategy:b') == ['price', 'backtest', 'strategy:a', 'strategy:b']

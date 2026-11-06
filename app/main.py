@@ -14,6 +14,7 @@ from company import CompanyProfile, load_profile
 from core.builder.controller import WizardController
 from core.common.background import BackgroundLoader
 from core.dashboard.controller import DashboardController
+from core.downloads.controller import DownloadController, PacingProfile
 from core.explorer.controller import ExplorerController
 from core.learn.controller import InfoController
 from core.learn.preferences import Preferences
@@ -26,9 +27,9 @@ from core.strategies.controller import StrategyController
 from core.strategies.service import StrategyService
 from learn import TopicLibrary, load_library
 from portfolio import Portfolio
-from prices import load_daily, load_financials
+from prices import load_daily, load_financials, refresh
 from prices.store import stored_stocks
-from search import company_names
+from search import Catalog, company_names, load_catalog
 from qtrender.builder.wizard import StrategyWizard
 from qtrender.dashboard.view_area import ViewArea
 from qtrender.dialogs import QtDialogs
@@ -56,7 +57,9 @@ class MainWindow(QMainWindow):
                  preferences: Preferences | None = None, library: TopicLibrary | None = None,
                  profile_source: Callable[[str], CompanyProfile] = load_profile,
                  stored_stocks_source: Callable[[], pd.DataFrame] = stored_stocks,
-                 names_source: Callable[[], dict[str, str]] = company_names) -> None:
+                 names_source: Callable[[], dict[str, str]] = company_names,
+                 catalog_source: Callable[[], Catalog] = load_catalog, download_pacing: PacingProfile | None = None,
+                 download_refresh: Callable[[str], str] = refresh) -> None:
         """The sources, loader, remembered settings and topic library can be replaced (tests use canned ones)."""
         super().__init__()
         self.setWindowTitle('Stock Dashboard')
@@ -79,8 +82,8 @@ class MainWindow(QMainWindow):
         self.view_area = ViewArea(loader, financials_source)
         self.wizard = StrategyWizard()  # a page of the right-hand panel, for creating or editing a strategy
         self.add_stock_panel = AddStockPanel(loader)  # another page: adding stocks to a portfolio
-        self.stock_library_panel = StockLibraryPanel(loader)  # Library > Stocks
-        self.strategy_library_panel = StrategyLibraryPanel()  # Library > Strategies
+        self.stock_library_panel = StockLibraryPanel(loader)  # Tools > Stocks (with its Download / update tab)
+        self.strategy_library_panel = StrategyLibraryPanel()  # Tools > Strategies
         self.side_panel = SideDock()  # a dock on the right: one page at a time, shown only when needed
         self.side_panel.add_page(self.wizard, 'Strategy Builder')
         self.side_panel.add_page(self.add_stock_panel, 'Add Stock')
@@ -117,11 +120,15 @@ class MainWindow(QMainWindow):
         self.strategy_library_controller = StrategyLibraryController(
             self.strategy_library_panel, strategy_service, self.strategy_controller, self.explorer_controller,
             current_symbol=lambda: self.controller.symbol, ask_symbol=self.dialogs.ask_symbol)
+        self.download_controller = DownloadController(
+            self.stock_library_panel.download_panel, loader, catalog_source, stored_stocks_source,
+            lambda: self._portfolio_symbols(portfolio_service), download_pacing, download_refresh)
         self.info_controller = InfoController(
             QtInfoView(self.info_panel, self.info_mode, self.menu, self.show_info_dock, self.info_dock.hide),
             library, QtInfoDialogs(self), preferences, context=self._info_context)
         self.info_mode.bind(self.info_controller)
         self.explorer_controller.on_strategy_action = self.strategy_controller.handle
+        self.controller.on_best_strategy = self.explorer_controller.mark_best  # the star on the best strategy
         self.explorer_controller.on_portfolio_action = self.portfolio_controller.handle
         self.explorer.menu_source = self.explorer_controller.menu_for
 
@@ -163,6 +170,14 @@ class MainWindow(QMainWindow):
         self.strategy_library_panel.action_chosen.connect(self.strategy_library_controller.run)
         self.strategy_library_panel.done_requested.connect(self.strategy_library_controller.done)
         self.strategy_library_panel.closed.connect(self.side_panel.dismiss)
+        download = self.stock_library_panel.download_panel  # the Stock Library's Download / update tab
+        download.universe_chosen.connect(self.download_controller.choose_universe)
+        download.only_pending_toggled.connect(self.download_controller.set_only_pending)
+        download.symbol_picked.connect(self.download_controller.pick)
+        download.start_requested.connect(self.download_controller.start)
+        download.stop_requested.connect(self.download_controller.stop)
+        self.stock_library_panel.hidden.connect(self.download_controller.stop)  # a download only runs while it is open
+        self.download_controller.on_ended = self.stock_library_controller.refresh  # new stocks appear in its list
         self.info_controller.restore()  # apply the remembered View > Info Wizard setting
 
     def open_add_stock(self, portfolio: Portfolio) -> None:
@@ -173,16 +188,27 @@ class MainWindow(QMainWindow):
         self.show_panel(self.add_stock_panel)
 
     def open_stock_library(self) -> None:
-        """Library > Stocks."""
+        """Tools > Stocks."""
         if self._may_replace_wizard('open the Stock Library instead'):
             self.stock_library_controller.start()
+            self.download_controller.start_panel()
             self.show_panel(self.stock_library_panel)
 
     def open_strategy_library(self) -> None:
-        """Library > Strategies."""
+        """Tools > Strategies."""
         if self._may_replace_wizard('open the Strategy Library instead'):
             self.strategy_library_controller.start()
             self.show_panel(self.strategy_library_panel)
+
+    @staticmethod
+    def _portfolio_symbols(portfolio_service: PortfolioService) -> list[str]:
+        """Every stock in every saved portfolio."""
+        portfolios = (portfolio_service.get(saved.id) for saved in portfolio_service.saved())
+        return sorted({symbol for portfolio in portfolios if portfolio for symbol in portfolio.symbols})
+
+    def closeEvent(self, event) -> None:
+        self.download_controller.stop()  # a download only runs while the app and its panel are open
+        super().closeEvent(event)
 
     def _may_replace_wizard(self, instead: str) -> bool:
         """Another page may take the side panel unless a strategy is being edited and the user wants to keep it."""

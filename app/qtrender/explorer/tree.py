@@ -15,6 +15,7 @@ from PySide6.QtCore import QItemSelectionModel, QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QAbstractItemView, QMenu, QTreeWidget, QTreeWidgetItem
 
+from core.common import theme
 from core.dashboard.layout import OVERVIEW
 from core.explorer.controller import FOLDER, PORTFOLIO, STRATEGY, SYMBOL, VIEW, Node, Scope, TreeRow
 from core.explorer.entries import StrategyEntry
@@ -28,7 +29,10 @@ KIND_ROLE = Qt.ItemDataRole.UserRole + 1  # SYMBOL, VIEW, FOLDER, STRATEGY or PO
 LIBRARY_ROLE = Qt.ItemDataRole.UserRole + 2
 PORTFOLIO_ROLE = Qt.ItemDataRole.UserRole + 3  # a portfolio row's id
 TERM_ROLE = Qt.ItemDataRole.UserRole + 4  # the topic that explains the row, if any
+LABEL_ROLE = Qt.ItemDataRole.UserRole + 5  # a strategy row's plain label (the star is added to the displayed text)
+TIP_ROLE = Qt.ItemDataRole.UserRole + 6  # a strategy row's own tooltip
 LIBRARY_COLOR = '#9598a1'
+BEST_COLOR = theme.WARNING  # the strategy that did best
 
 
 class Explorer(QTreeWidget):
@@ -42,6 +46,8 @@ class Explorer(QTreeWidget):
         self.setMinimumWidth(160)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setToolTip('Click a view to show it.\nCtrl+click or Shift+click to stack several views.\n'
+                        'Ctrl+click two or more strategies to compare them on one chart.\n'
+                        'A starred strategy did best on this stock over the range on screen.\n'
                         'Right-click a stock or a strategy for strategy actions.')
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_menu)
@@ -50,6 +56,7 @@ class Explorer(QTreeWidget):
         self.symbol_items: dict[Scope, QTreeWidgetItem] = {}
         self.folders: dict[Scope, QTreeWidgetItem] = {}
         self.items: dict[tuple[Scope, str], QTreeWidgetItem] = {}  # (scope, key) -> view or strategy row
+        self.best: dict[str, tuple[str, str]] = {}  # symbol -> (strategy key, tooltip) of its starred strategy
         self.itemSelectionChanged.connect(lambda: self.selection_changed.emit(*self.read_selection()))
         self.itemChanged.connect(self._on_item_changed)
         self.mode = info_mode.current()
@@ -132,6 +139,17 @@ class Explorer(QTreeWidget):
             self._fill_strategies(scope, strategies)
         self.blockSignals(False)
 
+    def mark_best(self, symbol: str, strategy_key: str | None, tooltip: str) -> None:
+        if strategy_key is None:
+            self.best.pop(symbol, None)
+        else:
+            self.best[symbol] = (strategy_key, tooltip)
+        self.blockSignals(True)  # restyling rows is not a user click
+        for (scope, _), item in self.items.items():
+            if scope.symbol == symbol and item.data(0, KIND_ROLE) == STRATEGY:
+                self._style_strategy(symbol, item)
+        self.blockSignals(False)
+
     def select_only(self, scope: Scope, keys: list[str]) -> None:
         self.symbol_items[scope].setExpanded(True)
         if len(keys) == 1:
@@ -184,14 +202,30 @@ class Explorer(QTreeWidget):
             item.setData(0, KEY_ROLE, entry.key)
             item.setData(0, KIND_ROLE, STRATEGY)
             item.setData(0, LIBRARY_ROLE, entry.is_library)
-            item.setToolTip(0, entry.tooltip)
-            if entry.is_library:
-                font = QFont(item.font(0))
-                font.setItalic(True)
-                item.setFont(0, font)
-                item.setForeground(0, QColor(LIBRARY_COLOR))
+            item.setData(0, LABEL_ROLE, entry.label)
+            item.setData(0, TIP_ROLE, entry.tooltip)
+            self._style_strategy(scope.symbol, item)
             self.items[(scope, entry.key)] = item
         folder.setExpanded(True)
+
+    def _style_strategy(self, symbol: str, item: QTreeWidgetItem) -> None:
+        """A strategy row: library templates are italic grey; the stock's best strategy is starred, bold and gold."""
+        key, label, tip = item.data(0, KEY_ROLE), item.data(0, LABEL_ROLE), item.data(0, TIP_ROLE)
+        is_library = bool(item.data(0, LIBRARY_ROLE))
+        starred = self.best.get(symbol)
+        is_best = starred is not None and starred[0] == key
+        font = QFont(item.font(0))
+        font.setItalic(is_library)
+        font.setBold(is_best)
+        item.setFont(0, font)
+        if is_best:
+            item.setForeground(0, QColor(BEST_COLOR))
+            item.setText(0, f'★ {label}')
+            item.setToolTip(0, f'{starred[1]}\n\n{tip}')
+        else:
+            item.setData(0, Qt.ItemDataRole.ForegroundRole, QColor(LIBRARY_COLOR) if is_library else None)
+            item.setText(0, label)
+            item.setToolTip(0, tip)
 
     def _forget(self, scope: Scope) -> None:
         """Drop the registry entries of a stock that is leaving the tree."""

@@ -47,3 +47,31 @@ def test_different_starting_cash_is_flagged(spec_example):
     rich = dataclasses.replace(spec_example, id='rich', name='Rich', costs=Costs(capital=50_000))
     chart = backtest_chart(runs_for(spec_example, rich))
     assert 'different cash' in chart.note
+
+
+def test_hover_text_names_the_strategy_the_date_the_value_so_far_and_its_whole_range_figures(spec_example):
+    from core.backtest.model import hover_line
+    from core.common.formatting import Span
+    [(strategy, result)] = runs_for(spec_example)
+    chart = backtest_chart([(strategy, result)])
+    slot = len(chart.dates) - 1
+    text = ''.join(span.text for span in hover_line(chart, 0, slot))
+    assert text.startswith('MACD + Stoch RSI\n') and f'{chart.dates[slot]:%b %d, %Y}' in text
+    assert f'({(chart.series[0].values[slot] / strategy.costs.capital - 1) * 100:+.2f}% so far)' in text
+    assert 'Whole range:' in text and 'vs buy & hold' in text and 'Trades' in text and 'Max drawdown' in text
+    assert isinstance(hover_line(chart, 0, slot)[0], Span) and hover_line(chart, 0, slot)[0].color == chart.series[0].color
+
+
+def test_hovering_the_buy_and_hold_line_shows_its_own_figures(spec_example):
+    from core.backtest.model import hover_line
+    chart = backtest_chart(runs_for(spec_example))
+    text = ''.join(span.text for span in hover_line(chart, len(chart.series) - 1, len(chart.dates) - 1))
+    assert text.startswith('Buy & hold') and 'Whole range:' in text and 'Trades' not in text
+
+
+def test_there_is_nothing_to_hover_before_the_range_starts_or_off_the_chart(spec_example):
+    from core.backtest.model import hover_line
+    [(strategy, result)] = runs_for(spec_example)
+    chart = backtest_chart([(strategy, result)])
+    assert hover_line(chart, 0, 0) is None  # warm-up candles before the range
+    assert hover_line(chart, 0, len(chart.dates)) is None and hover_line(chart, 0, -1) is None

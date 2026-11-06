@@ -85,7 +85,7 @@ class ViewArea(QStackedWidget):
                       'price': PriceView(), 'candles': CandleChart(), 'sma': SmaView(), 'volume': VolumeView(),
                       'macd': MacdView(), 'stoch_rsi': StochRsiView(), 'atr': AtrView(),
                       'rel_strength': RelStrengthView(), 'growth': GrowthView(loader, financials_source),
-                      'backtest': BacktestView(), 'strategy': StrategyView(), 'history': HistoryView()}
+                      'strategy': StrategyView(), 'backtest': BacktestView(), 'history': HistoryView()}
         self.sma_overlays = {key: SmaLines(self.views[key]) for key in SMA_HOSTS}
         self.trade_overlays = {key: TradeOverlay(chart_of(widget), key in PRICE_CHARTS)
                                for key, widget in self.views.items() if chart_of(widget) and key not in ('strategy', 'backtest')}

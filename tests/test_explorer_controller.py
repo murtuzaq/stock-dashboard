@@ -18,6 +18,10 @@ class FakeTree:
         self.silent = []  # calls that must not report a selection change
         self.portfolios, self.added, self.removed, self.renaming = {}, [], [], None
         self.cleared = []
+        self.marks = []  # (symbol, strategy key or None, tooltip)
+
+    def mark_best(self, symbol, strategy_key, tooltip):
+        self.marks.append((symbol, strategy_key, tooltip))
 
     def add_portfolio(self, portfolio_id, name):
         self.portfolios[portfolio_id] = name
@@ -165,14 +169,14 @@ def test_ctrl_click_stacks_views_in_top_to_bottom_order():
     assert emitted[-1] == ('IBM', ['price', 'macd', 'atr'])  # the order of the tree, not of the clicks
 
 
-def test_only_one_strategy_at_a_time_and_the_one_just_clicked_wins():
+def test_several_strategies_can_be_selected_together_to_compare_them():
     controller, tree, emitted, *_ = make({'IBM': [entry('a'), entry('b')]})
     controller.add_symbol('IBM')
     tree.click('IBM', 'strategy:a', ctrl=True)
     assert emitted[-1] == ('IBM', ['price', 'strategy:a'])
     tree.click('IBM', 'strategy:b', ctrl=True)
-    assert emitted[-1] == ('IBM', ['price', 'strategy:b'])
-    assert (Scope(None, 'IBM'), 'strategy:a') not in tree.selected  # the tree was told to drop it
+    assert emitted[-1] == ('IBM', ['price', 'strategy:a', 'strategy:b'])
+    assert (Scope(None, 'IBM'), 'strategy:a') in tree.selected  # the first one was not dropped
 
 
 def test_selecting_in_another_stock_leaves_the_first_one():
@@ -427,3 +431,13 @@ def test_the_same_ticker_shown_elsewhere_is_not_affected_when_another_copy_is_re
     tech.symbols = ['MSFT']
     controller.refresh_portfolio(tech)  # the portfolio's AAPL goes away
     assert tree.cleared == [] and controller.current_scope == Scope(None, 'AAPL')
+
+
+def test_the_best_strategy_is_passed_to_the_tree_as_a_row_key_and_can_be_cleared():
+    from core.explorer.best import BestStrategy
+    controller, tree, *_ = make({'IBM': [entry('a'), entry('b')]})
+    controller.add_symbol('IBM')
+    controller.mark_best('IBM', BestStrategy('b', 'Best of 2 strategies, past year: +9.0% and beat buy & hold (+4.0%).'))
+    controller.mark_best('IBM', None)
+    assert tree.marks == [('IBM', 'strategy:b', 'Best of 2 strategies, past year: +9.0% and beat buy & hold (+4.0%).'),
+                          ('IBM', None, '')]

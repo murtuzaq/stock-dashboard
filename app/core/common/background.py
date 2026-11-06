@@ -30,6 +30,16 @@ class BackgroundLoader:
         else:
             self._execute(work, done, failed)
 
+    def run_with_progress(self, work: Callable[[Callable[[Any], None]], Any], done: Callable[[Any], None],
+                          failed: Callable[[Exception], None] | None = None,
+                          progress: Callable[[Any], None] | None = None) -> None:
+        """Like run, for long jobs: work(report) may call report(update) any number of times, and each update is
+        delivered to progress(update) on the GUI thread, in order, before done(result)."""
+        def report(update: Any) -> None:
+            if progress is not None:
+                self._post(lambda: progress(update))
+        self.run(lambda: work(report), done, failed)
+
     def _execute(self, work, done, failed) -> None:
         try:
             result = work()

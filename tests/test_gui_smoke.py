@@ -62,11 +62,18 @@ def window(app, tmp_path, monkeypatch):
     from core.learn.preferences import MemoryPreferences
     from learn import requests as info_requests
     monkeypatch.setattr(info_requests, 'FILE', tmp_path / 'info_requests.json')
+    from core.downloads.controller import PacingProfile
+    from search import Group, Security
+    downloaded = []
+    securities = {s: Security(s, f'{s} Inc', 'Nasdaq', False, ()) for s in ('AAA', 'BBB', 'IBM')}
+    catalog = Catalog(securities, [Group('Test Index', 'Index', '', (), frozenset(securities))], frozenset())
     main_window = MainWindow(BackgroundLoader.immediate(), lambda symbol: random_walk(500, seed=len(symbol)),
                              financials, preferences=MemoryPreferences(), profile_source=profile,
                              stored_stocks_source=lambda: STORED_STOCKS.copy(),
-                             names_source=lambda: {'TEST': 'Test Corporation', 'IBM': 'IBM Corp'})
-    main_window.messages, main_window.answers = messages, answers
+                             names_source=lambda: {'TEST': 'Test Corporation', 'IBM': 'IBM Corp'},
+                             catalog_source=lambda: catalog, download_pacing=PacingProfile(pause_min=0, pause_max=0),
+                             download_refresh=lambda symbol: downloaded.append(symbol) or 'new')
+    main_window.messages, main_window.answers, main_window.downloaded = messages, answers, downloaded
     main_window.show()
     yield main_window
     main_window.close()
@@ -465,11 +472,11 @@ def test_overview_without_a_profile_still_shows_the_strategy_comparison(window, 
     assert 'No strategies to compare' in overview.verdict.text()
 
 
-# --- Library menu ----------------------------------------------------------------------------------------------
+# --- Tools menu ----------------------------------------------------------------------------------------------
 
 def test_library_menu_has_stocks_and_strategies(window):
     library_menu = window.menu.actions()[2].menu()
-    assert library_menu.title() == '&Library'
+    assert library_menu.title() == '&Tools'
     assert [a.text() for a in library_menu.actions()] == ['&Stocks…', 'S&trategies…']
 
 
@@ -621,7 +628,7 @@ def test_the_wizard_saves_a_description_and_keeps_a_copied_strategys_references(
     assert 'My take on it.' in window.view_area.views['strategy'].rules.text()
 
 
-def test_backtest_chart_draws_a_line_per_selected_strategy_plus_buy_and_hold(window):
+def test_ctrl_clicking_two_strategies_shows_the_comparison_chart_with_a_line_each_plus_buy_and_hold(window):
     from strategy import Condition, Exits, RuleGroup, Strategy
     for name, days in (('Fast', 20), ('Slow', 100)):
         repository.save(Strategy(name, RuleGroup('all', [Condition(Operand('close'), 'above',
@@ -632,7 +639,6 @@ def test_backtest_chart_draws_a_line_per_selected_strategy_plus_buy_and_hold(win
     window.explorer_controller.add_symbol('TEST')
     window.explorer_controller.refresh_strategies()
     window.explorer.clearSelection()
-    window.explorer.items[(Scope(None, 'TEST'), 'backtest')].setSelected(True)
     for (scope, key), item in window.explorer.items.items():
         if key.startswith('strategy:'):
             item.setSelected(True)
@@ -640,3 +646,108 @@ def test_backtest_chart_draws_a_line_per_selected_strategy_plus_buy_and_hold(win
     plot = window.view_area.views['backtest'].plot_widget
     assert len(plot.lines) == len(window.controller.strategy_ids) + 1 >= 3
     assert 'Buy &amp; hold' in window.view_area.views['backtest'].legend.text()  # the label is rich text (HTML)
+
+
+def test_stock_library_download_tab_lists_stocks_downloads_the_missing_ones_and_stops_when_hidden(window):
+    window.menu.stocks_action.trigger()
+    library = window.stock_library_panel
+    panel = library.download_panel
+    assert [library.tabs.tabText(i) for i in range(library.tabs.count())] == ['Stocks in the database',
+                                                                               'Download / update']
+    library.tabs.setCurrentWidget(panel)
+    assert window.side_panel.isVisible() and panel.isVisible() and window.side_panel.windowTitle() == 'Stock Library'
+    assert [panel.table.item(r, 0).text() for r in range(panel.table.rowCount())] == ['AAA', 'BBB', 'IBM']
+    statuses = {panel.table.item(r, 0).text(): panel.table.item(r, 2).text() for r in range(panel.table.rowCount())}
+    assert statuses['AAA'] == 'Not downloaded' and statuses['IBM'] in ('Up to date', 'Out of date')
+    assert 'not downloaded' in panel.totals.text()
+
+    panel.only_pending.setChecked(True)
+    assert 'AAA' in [panel.table.item(r, 0).text() for r in range(panel.table.rowCount())]
+    panel.only_pending.setChecked(False)
+
+    panel.start_button.click()
+    assert 'AAA' in window.downloaded and 'BBB' in window.downloaded
+    assert panel.table.item(0, 2).text() == 'Up to date' and panel.start_button.isEnabled()
+    assert 'Finished' in panel.notice.text()
+
+    window.download_controller.choose_universe('Stocks I picked')
+    assert panel.table.rowCount() == 0
+    window.download_controller._stop.clear()
+    library.tabs.setCurrentIndex(0)  # switching tabs is not leaving the library: a download keeps going
+    assert not window.download_controller._stop.is_set()
+    window.menu.strategies_action.trigger()  # another page replaces the Stock Library
+    assert window.download_controller._stop.is_set()
+    window.download_controller.running = False
+
+
+def two_strategies_for_test():
+    from strategy import Condition, Exits, RuleGroup, Strategy
+    for name, days in (('Fast', 20), ('Slow', 100)):
+        repository.save(Strategy(name, RuleGroup('all', [Condition(Operand('close'), 'above',
+                                                                    Operand('sma', params={'days': days}))]),
+                                 RuleGroup('any', [Condition(Operand('close'), 'below',
+                                                             Operand('sma', params={'days': days}))]),
+                                 Exits(stop_loss_pct=8), symbol='TEST'))
+
+
+def strategy_rows(window):
+    return {key: item for (scope, key), item in window.explorer.items.items() if key.startswith('strategy:')}
+
+
+def test_the_best_strategy_row_is_starred_bold_and_explained_and_follows_the_range(window):
+    two_strategies_for_test()
+    window.explorer_controller.add_symbol('TEST')
+    window.explorer_controller.refresh_strategies()
+    rows = strategy_rows(window)
+    starred = [item for item in rows.values() if item.text(0).startswith('★ ')]
+    assert len(starred) == 1 and starred[0].font(0).bold()
+    assert 'Best of 2 strategies, past year' in starred[0].toolTip(0)
+    assert not any(item.font(0).bold() for item in rows.values() if item is not starred[0])
+
+    def starred_rows():
+        return [item for item in strategy_rows(window).values() if item.text(0).startswith('★ ')]
+
+    window.view_area.range_selected.emit('1M')  # the star is worked out again for the new range, and names it
+    assert len(starred_rows()) <= 1 and all('past month' in item.toolTip(0) for item in starred_rows())
+    window.view_area.range_selected.emit('Max')
+    assert len(starred_rows()) <= 1 and all('all time' in item.toolTip(0) for item in starred_rows())
+
+    before = [item.text(0) for item in starred_rows()]
+    window.explorer_controller.refresh_strategies()  # the rows are rebuilt: the star must survive that
+    assert [item.text(0) for item in starred_rows()] == before
+
+
+def test_one_strategy_shows_the_results_panel_and_two_show_only_the_chart_with_hover_details(window):
+    from PySide6.QtCore import QPointF
+    from PySide6.QtWidgets import QApplication
+    two_strategies_for_test()
+    window.explorer_controller.add_symbol('TEST')
+    window.explorer_controller.refresh_strategies()
+    window.explorer.clearSelection()
+    first, second = list(strategy_rows(window).values())[:2]
+    first.setSelected(True)
+    assert 'strategy' in window.controller.shown and 'backtest' not in window.controller.shown
+    second.setSelected(True)  # Ctrl+click a second one
+    assert 'backtest' in window.controller.shown and 'strategy' not in window.controller.shown
+
+    view = window.view_area.views['backtest']
+    plot = view.plot_widget
+    plot.resize(900, 400)
+    QApplication.processEvents()
+    series = plot.chart.series[0]
+    slot = len(plot.chart.dates) - 1
+    point = plot.getViewBox().mapViewToScene(QPointF(slot, series.values[slot]))
+    assert plot.nearest_line(point) is not None and plot.nearest_line(point)[1] == slot
+    index, _ = plot.nearest_line(point)
+    plot._on_mouse_moved((point,))
+    assert plot.hover_text.isVisible() and plot.hovered == index
+    shown = plot.hover_text.toPlainText()
+    assert plot.chart.series[index].label in shown and 'Whole range:' in shown and 'so far' in shown
+    assert plot.lines[index].opts['pen'].width() > 2 or plot.chart.series[index].is_hold
+
+    far = plot.getViewBox().mapViewToScene(QPointF(slot, series.values[slot] * 50))  # nowhere near any line
+    plot._on_mouse_moved((far,))
+    assert not plot.hover_text.isVisible() and plot.hovered is None
+
+    first.setSelected(False)  # back to one strategy: the full results panel returns
+    assert 'strategy' in window.controller.shown and 'backtest' not in window.controller.shown

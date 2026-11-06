@@ -15,6 +15,7 @@ K_COLOR = '#2962ff'
 D_COLOR = '#ff6d00'
 RS_COLOR = '#2962ff'
 AVERAGE_COLOR = '#f7c948'
+DOWNLOADING = '#4d8dff'  # a stock being downloaded right now
 EQUITY_COLOR = '#2962ff'
 HOLD_COLOR = '#787b86'
 SMA_COLORS = ('#2962ff', '#f7c948', '#e040fb')

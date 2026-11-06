@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
 from core.dashboard.layout import OVERVIEW, STRATEGIES_BEFORE, VIEWS, strategy_id_of, strategy_key
+from core.explorer.best import BestStrategy
 from core.explorer.entries import StrategyEntry, strategy_entries
 from core.explorer.selection import Entry, resolve_selection
 from core.portfolios import actions as portfolio_actions
@@ -63,6 +64,9 @@ class ExplorerTreeView(Protocol):
     def remove_symbol(self, scope: Scope) -> None: ...
     def set_strategies(self, symbol: str, strategies: list[StrategyEntry]) -> None:
         """Replace the strategy rows of every copy of this symbol in the tree."""
+    def mark_best(self, symbol: str, strategy_key: str | None, tooltip: str) -> None:
+        """Star this strategy row as the best one for the stock (None: remove the star). The view remembers it, so it
+        survives the rows being rebuilt and applies to every copy of the symbol in the tree."""
     def select_only(self, scope: Scope, keys: list[str]) -> None:
         """Open the stock and make exactly these rows the selection (the first becomes current)."""
     def restore_selection(self, scope: Scope, keys: list[str], current_key: str | None) -> None:
@@ -125,6 +129,13 @@ class ExplorerController:
         self.view.restore_selection(scope, still_selected, self.current_key)
         self.on_selection_changed(*self.view.read_selection())
 
+    def mark_best(self, symbol: str, best: BestStrategy | None) -> None:
+        """The dashboard worked out which strategy did best for this stock over the range on screen."""
+        if best is None:
+            self.view.mark_best(symbol, None, '')
+        else:
+            self.view.mark_best(symbol, strategy_key(best.strategy_id), best.tooltip)
+
     def select_strategy(self, symbol: str, strategy_id: str) -> None:
         """Select a strategy under the stock being viewed (if it is this symbol), else under the stock on its own."""
         scope = self.current_scope if self.current_symbol == symbol else Scope(None, symbol)
@@ -184,7 +195,7 @@ class ExplorerController:
             strategy_keys = {entry.key for entry in self.strategies[scope.symbol]}
             rows = [Entry(key, key in strategy_keys, key in chosen) for key in self.ordered_keys(scope.symbol)]
             keep = resolve_selection(rows, current.key)
-        # Only one stock's views at a time, and only one strategy at a time.
+        # Only one stock's views at a time (any number of its strategies: two or more are compared).
         self.view.apply_selection(scope, keep)
         self.current_scope, self.current_key, self.selected = scope, current.key, keep
         if keep and self.on_views_selected:  # Ctrl+clicking away the last view keeps showing it

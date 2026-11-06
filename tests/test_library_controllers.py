@@ -1,4 +1,4 @@
-"""Library > Stocks and Library > Strategies controllers, through fake views (no Qt)."""
+"""Tools > Stocks and Tools > Strategies controllers, through fake views (no Qt)."""
 from datetime import datetime
 
 import pandas as pd

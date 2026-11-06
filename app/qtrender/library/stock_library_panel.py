@@ -1,17 +1,20 @@
-"""Library > Stocks (renderer): every stock stored locally, a search box to add more, right-click to use one.
+"""Tools > Stocks (renderer): every stock stored locally, a search box to add more, right-click to use one, and a
+second tab to download or update many stocks at once.
 
-core.library.stocks.StockLibraryController decides what everything means (StockLibraryView is what it needs here).
+core.library.stocks.StockLibraryController decides what everything means (StockLibraryView is what it needs here);
+the second tab is qtrender.downloads.DownloadPanel, driven by core.downloads.DownloadController.
 """
 from collections.abc import Callable
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QColor
-from PySide6.QtWidgets import (QHeaderView, QLabel, QMenu, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout,
-                               QWidget)
+from PySide6.QtGui import QColor, QHideEvent
+from PySide6.QtWidgets import (QHeaderView, QLabel, QMenu, QPushButton, QTableWidget, QTableWidgetItem, QTabWidget,
+                               QVBoxLayout, QWidget)
 
 from core.common.background import BackgroundLoader
 from core.library.stocks import COLUMNS, StockRow
 from core.strategies.service import MenuEntry
+from qtrender.downloads.download_panel import DownloadPanel
 from qtrender.searchbar.bar import SearchBar
 
 RIGHT = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -34,6 +37,7 @@ class StockLibraryPanel(QWidget):
     action_chosen = Signal(str, str, object)  # menu action, symbol, the entry's argument
     done_requested = Signal()
     closed = Signal()
+    hidden = Signal()  # the whole page went away (dock closed, another page opened): stop any download
 
     def __init__(self, loader: BackgroundLoader) -> None:
         super().__init__()
@@ -43,24 +47,32 @@ class StockLibraryPanel(QWidget):
         self.title = QLabel()
         self.title.setObjectName('chartTitle')
         layout.addWidget(self.title)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs, stretch=1)
+        self.stocks_page = QWidget()
+        self.download_panel = DownloadPanel(loader)  # download or update many stocks at once
+        self.tabs.addTab(self.stocks_page, 'Stocks in the database')
+        self.tabs.addTab(self.download_panel, 'Download / update')
+        stocks = QVBoxLayout(self.stocks_page)
+        stocks.setContentsMargins(0, 8, 0, 0)
         hint = QLabel('Every stock whose prices are stored on this computer. Searching a stock anywhere in the app '
-                      'adds it; you can also add one here. Right-click a stock to open it or add it to a portfolio; '
-                      'double-click to open it.')
+                      'adds it; you can also add one here, or use the Download / update tab to fetch many at once. '
+                      'Right-click a stock to open it or add it to a portfolio; double-click to open it.')
         hint.setObjectName('summary')
         hint.setWordWrap(True)
-        layout.addWidget(hint)
+        stocks.addWidget(hint)
 
         self.search = SearchBar(loader)
         self.search.symbol_chosen.connect(self.symbol_added)
-        layout.addWidget(self.search)
+        stocks.addWidget(self.search)
         self.notice = QLabel()
         self.notice.setObjectName('summary')
         self.notice.setWordWrap(True)
-        layout.addWidget(self.notice)
+        stocks.addWidget(self.notice)
 
         self.count = QLabel()
         self.count.setObjectName('barLabel')
-        layout.addWidget(self.count)
+        stocks.addWidget(self.count)
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setObjectName('historyTable')
         self.table.setHorizontalHeaderLabels(COLUMNS)
@@ -77,12 +89,17 @@ class StockLibraryPanel(QWidget):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._show_menu)
         self.table.cellDoubleClicked.connect(lambda row, column: self._open(row))
-        layout.addWidget(self.table, stretch=1)
+        stocks.addWidget(self.table, stretch=1)
 
         self.done_button = QPushButton('Done')
         self.done_button.setDefault(True)
         self.done_button.clicked.connect(self.done_requested)
         layout.addWidget(self.done_button)
+
+    def hideEvent(self, event: QHideEvent) -> None:
+        """The page itself was hidden (not just a tab switched): that ends any download."""
+        self.hidden.emit()
+        super().hideEvent(event)
 
     def symbol_at(self, row: int) -> str | None:
         item = self.table.item(row, 0)

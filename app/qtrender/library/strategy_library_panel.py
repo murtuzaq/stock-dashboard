@@ -1,4 +1,4 @@
-"""Library > Strategies (renderer): every strategy (library templates first, then each stock's), the selected
+"""Tools > Strategies (renderer): every strategy (library templates first, then each stock's), the selected
 one's rules, and buttons for what can be done with it.
 
 core.library.strategies.StrategyLibraryController decides what applies and what a click means

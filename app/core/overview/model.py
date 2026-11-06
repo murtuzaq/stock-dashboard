@@ -114,7 +114,7 @@ def rank_rows(ranked: list[Ranked]) -> list[RankRow]:
 def verdict(ranked: list[Ranked]) -> Line:
     if not ranked:
         return [plain('No strategies to compare yet. Create one (right-click the stock > New Strategy…) or add '
-                      'templates with Library > Strategies.')]
+                      'templates with Tools > Strategies.')]
     best = ranked[0]
     hold = best.result.metrics['buy_hold_return_pct']
     years = f'over the past {RANK_YEARS} years'

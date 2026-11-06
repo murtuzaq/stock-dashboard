@@ -1,4 +1,4 @@
-"""Library > Stocks: every stock whose prices are stored locally, and growing that list.
+"""Tools > Stocks: every stock whose prices are stored locally, and growing that list.
 
 A stock joins the library the first time its prices are downloaded (by searching it, or with the panel's own
 search box). Right-click a stock to open it or add it to any saved portfolio. The renderer implements
