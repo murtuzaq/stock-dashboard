@@ -361,3 +361,13 @@ def test_a_strategy_that_cannot_run_is_left_out_and_not_retried(spec_example, mo
     first = len(calls)
     controller.refresh_best()
     assert len(calls) == first  # the failure was remembered
+
+
+def test_changing_the_range_tells_the_listener():
+    controller, view = make_controller()
+    heard = []
+    controller.on_range_changed = heard.append
+    controller.show_views('AAA', ['price'], '1D')
+    controller.set_range('5Y')
+    controller.set_range('Max')
+    assert heard == ['5Y', 'Max'] and controller.range == 'Max'

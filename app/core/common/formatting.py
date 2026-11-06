@@ -25,6 +25,7 @@ class Cell:
     color: str | None = None
     tooltip: str | None = None
     align_right: bool = False
+    sort_value: float | None = None  # when set, a sortable table orders this column by number, not by the text
 
 
 def plain(text: str) -> Span:

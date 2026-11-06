@@ -39,6 +39,15 @@ def financials(symbol):
     return {'quarterly': figures, 'annual': figures.iloc[[-1]]}
 
 
+def fake_holds(stocks, range_label):
+    """Buy & hold figures without a database: IBM +9% and TEST +100% over 1Y, doubled over any other range."""
+    from strategy.buy_hold import BuyHold
+    scale = 1 if range_label == '1Y' else 2
+    returns = {'IBM': 9.0 * scale, 'TEST': 100.0 * scale}
+    return {symbol: BuyHold(pd.Timestamp('2025-01-02'), 10_000 * (1 + pct / 100), pct, False)
+            for symbol, pct in returns.items() if symbol in set(stocks['symbol'])}
+
+
 @pytest.fixture(scope='module')
 def app():
     return QApplication.instance() or QApplication([])
@@ -71,6 +80,7 @@ def window(app, tmp_path, monkeypatch):
                              financials, preferences=MemoryPreferences(), profile_source=profile,
                              stored_stocks_source=lambda: STORED_STOCKS.copy(),
                              names_source=lambda: {'TEST': 'Test Corporation', 'IBM': 'IBM Corp'},
+                             buy_hold_source=fake_holds,
                              catalog_source=lambda: catalog, download_pacing=PacingProfile(pause_min=0, pause_max=0),
                              download_refresh=lambda symbol: downloaded.append(symbol) or 'new')
     main_window.messages, main_window.answers, main_window.downloaded = messages, answers, downloaded
@@ -489,7 +499,8 @@ def test_stock_library_lists_local_stocks_and_adds_one_to_a_portfolio(window):
     panel = window.stock_library_panel
     assert window.side_panel.isVisible() and panel.isVisible() and window.side_panel.windowTitle() == 'Stock Library'
     assert [panel.table.item(r, 0).text() for r in range(panel.table.rowCount())] == ['IBM', 'TEST']
-    assert panel.table.item(0, 1).text() == 'IBM Corp' and panel.count.text() == '2 stocks in the library'
+    assert panel.table.item(0, 1).text() == 'IBM Corp'
+    assert panel.count.text().startswith('2 stocks in the library')
 
     menu = QMenu()
     picked = []
@@ -751,3 +762,23 @@ def test_one_strategy_shows_the_results_panel_and_two_show_only_the_chart_with_h
 
     first.setSelected(False)  # back to one strategy: the full results panel returns
     assert 'strategy' in window.controller.shown and 'backtest' not in window.controller.shown
+
+
+def test_stock_library_buy_and_hold_columns_sort_by_number_and_follow_the_chart_range(window):
+    from PySide6.QtCore import Qt
+    window.menu.stocks_action.trigger()
+    table = window.stock_library_panel.table
+    headers = [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())]
+    assert headers[-2:] == ['Buy & hold $10K', 'Return']
+
+    def column(index):
+        return {table.item(r, 0).text(): table.item(r, index).text() for r in range(table.rowCount())}
+    assert column(7) == {'IBM': '+9.0%', 'TEST': '+100.0%'} and column(6)['IBM'] == '$10,900.00'
+    table.sortByColumn(7, Qt.SortOrder.AscendingOrder)  # by number, so +9.0% comes before +100.0%
+    assert [table.item(r, 0).text() for r in range(table.rowCount())] == ['IBM', 'TEST']
+    table.sortByColumn(7, Qt.SortOrder.DescendingOrder)
+    assert [table.item(r, 0).text() for r in range(table.rowCount())] == ['TEST', 'IBM']
+    assert 'past year' in window.stock_library_panel.count.text()
+
+    window.view_area.range_selected.emit('Max')  # the chart's range button: the library follows it
+    assert column(7) == {'IBM': '+18.0%', 'TEST': '+200.0%'} and 'all time' in window.stock_library_panel.count.text()

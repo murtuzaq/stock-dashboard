@@ -30,6 +30,7 @@ from portfolio import Portfolio
 from prices import load_daily, load_financials, refresh
 from prices.store import stored_stocks
 from search import Catalog, company_names, load_catalog
+from strategy.buy_hold import BuyHold, stock_buy_hold
 from qtrender.builder.wizard import StrategyWizard
 from qtrender.dashboard.view_area import ViewArea
 from qtrender.dialogs import QtDialogs
@@ -59,7 +60,8 @@ class MainWindow(QMainWindow):
                  stored_stocks_source: Callable[[], pd.DataFrame] = stored_stocks,
                  names_source: Callable[[], dict[str, str]] = company_names,
                  catalog_source: Callable[[], Catalog] = load_catalog, download_pacing: PacingProfile | None = None,
-                 download_refresh: Callable[[str], str] = refresh) -> None:
+                 download_refresh: Callable[[str], str] = refresh,
+                 buy_hold_source: Callable[[pd.DataFrame, str], dict[str, BuyHold]] = stock_buy_hold) -> None:
         """The sources, loader, remembered settings and topic library can be replaced (tests use canned ones)."""
         super().__init__()
         self.setWindowTitle('Stock Dashboard')
@@ -116,7 +118,7 @@ class MainWindow(QMainWindow):
                                                         self.open_add_stock)
         self.stock_library_controller = StockLibraryController(
             self.stock_library_panel, loader, portfolio_service, self.explorer_controller, stored_stocks_source,
-            names_source, history_source)
+            names_source, history_source, buy_hold_source, lambda: self.controller.range)
         self.strategy_library_controller = StrategyLibraryController(
             self.strategy_library_panel, strategy_service, self.strategy_controller, self.explorer_controller,
             current_symbol=lambda: self.controller.symbol, ask_symbol=self.dialogs.ask_symbol)
@@ -129,6 +131,7 @@ class MainWindow(QMainWindow):
         self.info_mode.bind(self.info_controller)
         self.explorer_controller.on_strategy_action = self.strategy_controller.handle
         self.controller.on_best_strategy = self.explorer_controller.mark_best  # the star on the best strategy
+        self.controller.on_range_changed = self.stock_library_controller.set_range  # buy & hold columns follow it
         self.explorer_controller.on_portfolio_action = self.portfolio_controller.handle
         self.explorer.menu_source = self.explorer_controller.menu_for
 

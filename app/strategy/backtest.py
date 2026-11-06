@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from .model import Operand, Strategy
+from .model import Costs, Operand, Strategy
 from .signals import SeriesCache, evaluate
 
 
@@ -180,6 +180,14 @@ def _buy_and_hold(opens, closes, first, capital, slip, commission, index) -> pd.
     shares = _shares_affordable(capital, price, commission)
     cash = capital - shares * price - (commission if shares else 0)
     return pd.Series(cash + shares * closes[first:], index=index)
+
+
+def buy_and_hold_end(first_open: float, last_close: float, costs: Costs) -> float:
+    """What the starting cash is worth at `last_close` after buying as many whole shares as it affords at
+    `first_open` (a fill slightly worse than the open, as in a backtest) and holding: the buy & hold line's last value."""
+    series = _buy_and_hold(np.array([first_open], dtype=float), np.array([last_close], dtype=float), 0, costs.capital,
+                           costs.slippage_pct / 100, costs.commission, pd.RangeIndex(1))
+    return float(series.iloc[0])
 
 
 def _candles_in_position(trades: list[Trade], first: int, last: int) -> int:

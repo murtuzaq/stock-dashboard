@@ -88,6 +88,7 @@ class DashboardController:
         self._results: dict[tuple, BacktestResult] = {}  # by (symbol, rules hash, candle size, start)
         self._unrunnable: set[tuple] = set()  # the same keys, for strategies that cannot run on this data
         self.on_best_strategy: Callable[[str, BestStrategy | None], None] | None = None  # (symbol, its best strategy)
+        self.on_range_changed: Callable[[str], None] | None = None  # the range button label, e.g. '1Y'
         self._starred: set[str] = set()  # symbols the Explorer currently shows a best strategy for
 
     # --- what to show ---
@@ -155,6 +156,8 @@ class DashboardController:
     def set_range(self, range_label: str) -> None:
         self.range = range_label
         self._apply_range()
+        if self.on_range_changed:
+            self.on_range_changed(range_label)
 
     # --- loading ---
 

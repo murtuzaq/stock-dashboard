@@ -19,6 +19,19 @@ from qtrender.searchbar.bar import SearchBar
 
 RIGHT = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
 SYMBOL_ROLE = Qt.ItemDataRole.UserRole
+SORT_ROLE = Qt.ItemDataRole.UserRole + 1
+HOLD_COLUMN_TIP = ('What $10,000 would have become by buying at the start of the range selected under the chart and '
+                   'holding to the latest close. Click the header to sort by it.')
+
+
+class NumberItem(QTableWidgetItem):
+    """A cell shown as text ($12,340.00) that sorts by its number, so $9,000 comes before $12,000."""
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:
+        mine, theirs = self.data(SORT_ROLE), other.data(SORT_ROLE)
+        if mine is None or theirs is None:
+            return super().__lt__(other)
+        return mine < theirs
 
 
 def fill_menu(menu: QMenu, entries: list[MenuEntry | None], chosen: Callable[[MenuEntry], None]) -> None:
@@ -76,6 +89,8 @@ class StockLibraryPanel(QWidget):
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setObjectName('historyTable')
         self.table.setHorizontalHeaderLabels(COLUMNS)
+        for column in (len(COLUMNS) - 2, len(COLUMNS) - 1):
+            self.table.horizontalHeaderItem(column).setToolTip(HOLD_COLUMN_TIP)
         self.table.verticalHeader().hide()
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
@@ -124,12 +139,14 @@ class StockLibraryPanel(QWidget):
     def show_title(self, text: str) -> None:
         self.title.setText(text)
 
-    def show_stocks(self, rows: list[StockRow]) -> None:
+    def show_stocks(self, rows: list[StockRow], range_note: str = '') -> None:
         self.table.setSortingEnabled(False)  # filling a sorted table moves rows under the loop
         self.table.setRowCount(len(rows))
         for row, stock in enumerate(rows):
             for column, cell in enumerate(stock.cells):
-                item = QTableWidgetItem(cell.text)
+                item = NumberItem(cell.text) if cell.sort_value is not None else QTableWidgetItem(cell.text)
+                if cell.sort_value is not None:
+                    item.setData(SORT_ROLE, cell.sort_value)
                 item.setData(SYMBOL_ROLE, stock.symbol)
                 if cell.color:
                     item.setForeground(QColor(cell.color))
@@ -140,7 +157,7 @@ class StockLibraryPanel(QWidget):
                 self.table.setItem(row, column, item)
         self.table.setSortingEnabled(True)
         noun = 'stock' if len(rows) == 1 else 'stocks'
-        self.count.setText(f'{len(rows)} {noun} in the library')
+        self.count.setText(f'{len(rows)} {noun} in the library' + (f' · {range_note}' if range_note else ''))
 
     def show_notice(self, text: str) -> None:
         self.notice.setText(text)

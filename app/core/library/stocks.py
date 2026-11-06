@@ -13,13 +13,17 @@ import pandas as pd
 
 from core.common import theme
 from core.common.background import BackgroundLoader
-from core.common.formatting import Cell
+from core.common.formatting import Cell, money
 from core.portfolios.service import PortfolioError, PortfolioService
 from core.strategies.service import Menu, MenuEntry
 from portfolio import Portfolio
+from prices import DEFAULT_RANGE, RANGE_NAMES
+from strategy.buy_hold import BuyHold
 
 OPEN, ADD_TO, ADD_TO_NEW = 'library_open', 'library_add_to', 'library_add_to_new'  # menu actions
-COLUMNS = ['Symbol', 'Name', 'Last close', 'Day', 'Prices since', 'Updated']
+COLUMNS = ['Symbol', 'Name', 'Last close', 'Day', 'Prices since', 'Updated', 'Buy & hold $10K', 'Return']
+SEED = 10_000  # the starting cash the buy & hold columns are worked out for (the app's default capital)
+NO_VALUE = float('-inf')  # sorts a missing number below every real one
 
 
 @dataclass(frozen=True)
@@ -30,7 +34,8 @@ class StockRow:
 
 class StockLibraryView(Protocol):
     def show_title(self, text: str) -> None: ...
-    def show_stocks(self, rows: list[StockRow]) -> None: ...
+    def show_stocks(self, rows: list[StockRow], range_note: str = '') -> None:
+        """The table; `range_note` says which range the buy & hold columns cover."""
     def show_notice(self, text: str) -> None: ...
     def close(self) -> None: ...
 
@@ -44,8 +49,26 @@ class LibraryExplorer(Protocol):
     def begin_rename(self, portfolio_id: str) -> None: ...
 
 
-def stock_rows(stocks: pd.DataFrame, names: dict[str, str]) -> list[StockRow]:
-    """Table rows from prices.store.stored_stocks() and a symbol -> company name lookup."""
+def _buy_hold_cells(hold: BuyHold | None, range_label: str) -> list[Cell]:
+    """What the starting cash became by buying at the start of the range and holding: end value, then return."""
+    if hold is None:
+        none = 'Not enough price history to work this out'
+        return [Cell('—', tooltip=none, align_right=True, sort_value=NO_VALUE),
+                Cell('—', tooltip=none, align_right=True, sort_value=NO_VALUE)]
+    tip = (f'Bought at the open on {hold.first_date:%b %d, %Y} with {money(SEED)} and held to the latest close '
+           f'({RANGE_NAMES[range_label]}). Prices only: no dividends.')
+    if hold.short_history:
+        tip += f'\nThis stock only has prices since {hold.first_date:%b %d, %Y}, so the range is shorter.'
+    color = theme.change_color(hold.return_pct)
+    return [Cell(money(hold.end_value), color, tip, align_right=True, sort_value=hold.end_value),
+            Cell(f'{hold.return_pct:+.1f}%', color, tip, align_right=True, sort_value=hold.return_pct)]
+
+
+def stock_rows(stocks: pd.DataFrame, names: dict[str, str], holds: dict[str, BuyHold] | None = None,
+               range_label: str = DEFAULT_RANGE) -> list[StockRow]:
+    """Table rows from prices.store.stored_stocks(), a symbol -> company name lookup and each stock's buy & hold over
+    the range (see strategy.buy_hold)."""
+    holds = holds or {}
     rows = []
     for stock in stocks.itertuples():
         change = None
@@ -59,14 +82,17 @@ def stock_rows(stocks: pd.DataFrame, names: dict[str, str]) -> list[StockRow]:
                  else None, align_right=True),
             Cell(f'{stock.first_date:%Y}', tooltip=f'{stock.days:,} trading days stored, '
                  f'{stock.first_date:%b %d, %Y} to {stock.last_date:%b %d, %Y}', align_right=True),
-            Cell(updated, tooltip='When Yahoo was last asked for new prices', align_right=True)]))
+            Cell(updated, tooltip='When Yahoo was last asked for new prices', align_right=True),
+            *_buy_hold_cells(holds.get(stock.symbol), range_label)]))
     return rows
 
 
 class StockLibraryController:
     def __init__(self, view: StockLibraryView, loader: BackgroundLoader, portfolios: PortfolioService,
                  explorer: LibraryExplorer, stocks_source: Callable[[], pd.DataFrame],
-                 names_source: Callable[[], dict[str, str]], history_source: Callable[[str], pd.DataFrame]) -> None:
+                 names_source: Callable[[], dict[str, str]], history_source: Callable[[str], pd.DataFrame],
+                 buy_hold_source: Callable[[pd.DataFrame, str], dict[str, BuyHold]] = lambda stocks, label: {},
+                 range_source: Callable[[], str] = lambda: DEFAULT_RANGE) -> None:
         self.view = view
         self.loader = loader
         self.portfolios = portfolios
@@ -74,25 +100,38 @@ class StockLibraryController:
         self.stocks_source = stocks_source  # stored stocks (see prices.store.stored_stocks)
         self.names_source = names_source  # symbol -> company name
         self.history_source = history_source  # downloads and stores a stock's prices
+        self.buy_hold_source = buy_hold_source  # (stored stocks, range label) -> each stock's buy & hold
+        self.range_source = range_source  # the range selected under the chart, e.g. '1Y'
+        self._started = False  # the library has been opened at least once
         self.symbols: list[str] = []
         self._names: dict[str, str] | None = None
 
     def start(self) -> None:
         self.view.show_title('Stock Library')
         self.view.show_notice('')
+        self._started = True
         self.refresh()
 
     def refresh(self) -> None:
+        range_label = self.range_source()
+
         def work():
             if self._names is None:
                 self._names = self.names_source()
-            return self.stocks_source()
-        self.loader.run(work, self._show, lambda error: self.view.show_notice(f'Could not read the library: {error}'))
+            stocks = self.stocks_source()
+            return stocks, self.buy_hold_source(stocks, range_label), range_label
+        self.loader.run(work, lambda loaded: self._show(*loaded),
+                        lambda error: self.view.show_notice(f'Could not read the library: {error}'))
 
-    def _show(self, stocks: pd.DataFrame) -> None:
-        rows = stock_rows(stocks, self._names or {})
+    def set_range(self, range_label: str) -> None:
+        """The range under the chart changed: the buy & hold columns follow it (once the library has been opened)."""
+        if self._started:
+            self.refresh()
+
+    def _show(self, stocks: pd.DataFrame, holds: dict[str, BuyHold], range_label: str) -> None:
+        rows = stock_rows(stocks, self._names or {}, holds, range_label)
         self.symbols = [row.symbol for row in rows]
-        self.view.show_stocks(rows)
+        self.view.show_stocks(rows, f'buy & hold of ${SEED:,} over the {RANGE_NAMES[range_label]}')
 
     # --- growing the library ---
 

@@ -113,6 +113,19 @@ def save_document(kind: str, symbol: str, body: str) -> None:
         connection.execute('INSERT OR REPLACE INTO documents VALUES (?, ?, ?, ?)', (kind, symbol, time.time(), body))
 
 
+def opens_from(starts: dict[str, pd.Timestamp]) -> dict[str, tuple[pd.Timestamp, float]]:
+    """For each symbol, the date and open of its first stored day on or after the given date (symbols with none are
+    left out). One quick indexed lookup per stock: no history is read."""
+    found = {}
+    with _connect() as connection:
+        for symbol, start in starts.items():
+            row = connection.execute('SELECT date, open FROM daily WHERE symbol = ? AND date >= ? ORDER BY date LIMIT 1',
+                                     (symbol, f'{start:%Y-%m-%d}')).fetchone()
+            if row and row[1] is not None:
+                found[symbol] = (pd.Timestamp(row[0]), float(row[1]))
+    return found
+
+
 def stored_stocks() -> pd.DataFrame:
     """One row per symbol with stored prices: rows, first and last date, the last two closes, when last checked.
 

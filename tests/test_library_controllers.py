@@ -33,7 +33,7 @@ class FakeStockView:
         self.title, self.rows, self.notices, self.closed = '', [], [], False
 
     def show_title(self, text): self.title = text
-    def show_stocks(self, rows): self.rows = rows
+    def show_stocks(self, rows, range_note=''): self.rows, self.range_note = rows, range_note
     def show_notice(self, text): self.notices.append(text)
     def close(self): self.closed = True
 
@@ -60,7 +60,7 @@ def test_stock_rows_show_name_price_day_change_and_history():
     ibm, nke = stock_rows(STORED, {'IBM': 'International Business Machines'})
     checked = f'{datetime.fromtimestamp(1793848257.0):%Y-%m-%d}'  # shown in local time
     assert [cell.text for cell in ibm.cells] == ['IBM', 'International Business Machines', '254.32', '+1.71%', '1962',
-                                                 checked]
+                                                 checked, '—', '—']  # no buy & hold figures were given
     assert nke.cells[1].text == '' and nke.cells[3].text == '+5.22%' and nke.cells[5].text == '—'
     assert '16,320 trading days stored' in ibm.cells[4].tooltip
 
@@ -200,3 +200,42 @@ def test_other_actions_go_through_the_shared_strategy_actions():
     controller.selected = None
     controller.run(strategy_library.EDIT)
     assert view.notices[-1] == 'Choose a strategy first.'
+
+
+def holds_for(stocks, range_label):
+    from strategy.buy_hold import BuyHold
+    scale = 1 if range_label == '1Y' else 3
+    return {'IBM': BuyHold(pd.Timestamp('2025-11-04'), 10_000 * (1 + 0.1 * scale), 10.0 * scale, False)}
+
+
+def test_buy_and_hold_columns_show_the_end_value_and_return_coloured_and_sortable_by_number():
+    from core.common import theme
+    ibm, nke = stock_rows(STORED, {}, holds_for(STORED, '1Y'), '1Y')
+    value, change = ibm.cells[6], ibm.cells[7]
+    assert (value.text, change.text) == ('$11,000.00', '+10.0%')
+    assert value.color == change.color == theme.UP and value.sort_value == 11_000 and change.sort_value == 10.0
+    assert 'Nov 04, 2025' in value.tooltip and 'past year' in value.tooltip and 'only has prices since' not in value.tooltip
+    assert nke.cells[6].text == '—' and nke.cells[7].sort_value == stock_library.NO_VALUE  # no figures: sorts lowest
+
+
+def test_a_stock_with_less_history_than_the_range_says_so_in_the_tooltip():
+    from strategy.buy_hold import BuyHold
+    holds = {'IBM': BuyHold(pd.Timestamp('2024-03-01'), 9_000.0, -10.0, True)}
+    ibm, _ = stock_rows(STORED, {}, holds, '5Y')
+    from core.common import theme
+    assert 'only has prices since Mar 01, 2024' in ibm.cells[7].tooltip and ibm.cells[7].color == theme.DOWN
+
+
+def test_the_library_names_the_range_and_follows_the_chart_range():
+    chart_range = ['1Y']
+    view, explorer, service = FakeStockView(), FakeExplorer(), PortfolioService()
+    controller = StockLibraryController(view, BackgroundLoader.immediate(), service, explorer, lambda: STORED,
+                                        lambda: {}, lambda symbol: random_walk(300, seed=1), holds_for,
+                                        lambda: chart_range[0])
+    controller.set_range('5Y')  # not opened yet: nothing to update
+    assert view.rows == []
+    controller.start()
+    assert view.range_note == 'buy & hold of $10,000 over the past year' and view.rows[0].cells[7].text == '+10.0%'
+    chart_range[0] = '5Y'
+    controller.set_range('5Y')
+    assert view.range_note == 'buy & hold of $10,000 over the past 5 years' and view.rows[0].cells[7].text == '+30.0%'

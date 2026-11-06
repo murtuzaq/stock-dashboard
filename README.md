@@ -89,7 +89,10 @@ future ones, and the best of several strategies is partly luck: use it as a star
 **Tools > Stocks…** (Ctrl+Shift+S) opens the Stock Library on the right: every stock whose prices are stored on this
 computer, with company name, last close, day change, how far back its prices go, and when they were last updated.
 A stock joins the library the first time its prices are downloaded (searching it anywhere does that); use the
-panel's search box to add more. **Right-click** a stock to open it or *Add to portfolio >* any saved portfolio (or a
+panel's search box to add more. The last two columns show **buy & hold**: what $10,000 would have become by buying
+at the start of the range selected under the chart and holding to the latest close (end value and return %). They
+follow the chart's range buttons, are coloured green/red, and sort by number when you click the header. A stock with
+less history than the range starts at its first day (its tooltip says so). Prices only: no dividends. **Right-click** a stock to open it or *Add to portfolio >* any saved portfolio (or a
 new one); **double-click** to open it.
 
 **Tools > Strategies…** (Ctrl+Shift+T) opens the Strategy Library: library templates first, then each stock's own
