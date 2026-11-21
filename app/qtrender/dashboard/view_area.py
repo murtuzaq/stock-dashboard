@@ -69,6 +69,8 @@ class ViewArea(QStackedWidget):
         self.title.setObjectName('chartTitle')
         self.last_price = InfoLabel('price header')
         self.last_price.setObjectName('lastPrice')
+        for label in (self.title, self.last_price):
+            label.setMinimumWidth(40)  # a long title or price line may be clipped; it must not set the window's width
         title_row.addWidget(self.title)
         title_row.addWidget(self.last_price)
         title_row.addStretch()
@@ -95,7 +97,8 @@ class ViewArea(QStackedWidget):
         self.panels = QSplitter(Qt.Orientation.Vertical)
         self.panels.setChildrenCollapsible(False)
         for widget in self.views.values():
-            self.panels.addWidget(widget)
+            widget.hide()  # until something is selected: visible panels add up their minimum heights, and the stack
+            self.panels.addWidget(widget)  # counts this page even while it is not showing, which grows the window
         layout.addWidget(self.panels, stretch=1)
 
         layout.addLayout(self._build_range_bar())

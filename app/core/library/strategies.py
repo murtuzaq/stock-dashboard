@@ -13,8 +13,8 @@ from strategy import About, Strategy, describe
 
 LIBRARY_GROUP = 'Library templates'
 # Actions on the selected strategy (also the right-click menu).
-TRY, COPY_TO, SAVE_TO_LIBRARY, EDIT, DELETE, NEW_TEMPLATE = (
-    'try', 'copy_to', 'save_to_library', 'edit', 'delete', 'new_template')
+TRY, COPY_TO, SAVE_TO_LIBRARY, EDIT, DELETE, NEW_TEMPLATE, COMPARE = (
+    'try', 'copy_to', 'save_to_library', 'edit', 'delete', 'new_template', 'compare')
 
 
 @dataclass(frozen=True)
@@ -61,6 +61,7 @@ class StrategyLibraryController:
         self.ask_symbol = ask_symbol  # asks the user to pick a stock (None if they cancel)
         self.items: dict[str, StrategyItem] = {}
         self.selected: str | None = None
+        self.on_compare: Callable[[str], None] | None = None  # (strategy id): show it against every stored stock
 
     def start(self) -> None:
         self.view.show_title('Strategy Library')
@@ -92,7 +93,8 @@ class StrategyLibraryController:
             target = f'Copy to {symbol} and backtest'
         else:
             target = f'Backtest on {item.symbol}'
-        entries = [MenuEntry(target, TRY), MenuEntry('Copy to another stock…', COPY_TO)]
+        entries = [MenuEntry(target, TRY), MenuEntry('Compare on all stocks…', COMPARE),
+                   MenuEntry('Copy to another stock…', COPY_TO)]
         if not item.is_library:
             entries.append(MenuEntry('Save to Library', SAVE_TO_LIBRARY))
         entries += [MenuEntry('Edit…', EDIT), MenuEntry('Delete…', DELETE)]
@@ -115,6 +117,9 @@ class StrategyLibraryController:
         context = item.symbol or self.current_symbol()
         if action == TRY:
             self._try(item)
+        elif action == COMPARE:
+            if self.on_compare:
+                self.on_compare(item.id)
         elif action == COPY_TO:
             self.actions.handle('copy_to', context, item.id)
         elif action == SAVE_TO_LIBRARY:

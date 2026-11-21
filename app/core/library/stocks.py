@@ -66,8 +66,8 @@ def _buy_hold_cells(hold: BuyHold | None, range_label: str) -> list[Cell]:
 
 def stock_rows(stocks: pd.DataFrame, names: dict[str, str], holds: dict[str, BuyHold] | None = None,
                range_label: str = DEFAULT_RANGE) -> list[StockRow]:
-    """Table rows from prices.store.stored_stocks(), a symbol -> company name lookup and each stock's buy & hold over
-    the range (see strategy.buy_hold)."""
+    """Table rows from prices.store.stored_stocks(), a symbol -> company name lookup and each stock's buy & hold
+    over the range (see strategy.buy_hold)."""
     holds = holds or {}
     rows = []
     for stock in stocks.itertuples():

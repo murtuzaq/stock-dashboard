@@ -74,6 +74,16 @@ def _legend_entry(series: BacktestSeries) -> Line:
             Span(result, theme.change_color(series.return_pct))]
 
 
+def legend_of(series: list[BacktestSeries]) -> Line:
+    """One entry per line, side by side: colour, name, final value and return."""
+    legend: Line = []
+    for entry in series:
+        if legend:
+            legend.append(plain('   ·   '))
+        legend.extend(_legend_entry(entry))
+    return legend
+
+
 def backtest_chart(runs: list[tuple[Strategy, BacktestResult]]) -> BacktestChart | None:
     """Lines for every (strategy, result) of the same stock and candles. None when there is nothing to draw."""
     if not runs:
@@ -96,9 +106,4 @@ def backtest_chart(runs: list[tuple[Strategy, BacktestResult]]) -> BacktestChart
     if len(capitals) > 1:
         note = 'These strategies start with different cash: compare the % returns, not the dollar lines.'
 
-    legend: Line = []
-    for entry in series:
-        if legend:
-            legend.append(plain('   ·   '))
-        legend.extend(_legend_entry(entry))
-    return BacktestChart(first.dates, first.start, series, legend, note)
+    return BacktestChart(first.dates, first.start, series, legend_of(series), note)

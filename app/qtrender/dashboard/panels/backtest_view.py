@@ -127,11 +127,14 @@ class BacktestPlot(TimePlot):
 
 
 class BacktestView(PanelView):
-    def __init__(self) -> None:
-        super().__init__(BacktestPlot(), 'Account value over time for each selected strategy, starting from its '
-                                         'starting cash, against simply buying and holding. Hover over a line for '
-                                         'that strategy\'s details. The higher line grew your money more.')
-        self.set_legend([Span(HINT, MUTED)])
+    def __init__(self, hint: str = HINT, tooltip: str | None = None) -> None:
+        super().__init__(BacktestPlot(), tooltip or 'Account value over time for each selected strategy, starting from '
+                                                    'its starting cash, against simply buying and holding. Hover over '
+                                                    'a line for that strategy\'s details. The higher line grew your '
+                                                    'money more.')
+        self.hint = hint  # what the legend says while there is nothing to draw
+        self.legend.setWordWrap(True)  # several strategies make a long legend: wrap it, don't widen the window
+        self.set_legend([Span(self.hint, MUTED)])
 
     def set_data(self, daily: pd.DataFrame, candles: pd.DataFrame) -> None:
         pass  # results arrive through show_chart()
@@ -139,7 +142,7 @@ class BacktestView(PanelView):
     def show_chart(self, chart: BacktestChart | None) -> None:
         self.plot_widget.show_chart(chart)
         if chart is None:
-            self.set_legend([Span(HINT, MUTED)])
+            self.set_legend([Span(self.hint, MUTED)])
             return
         legend = list(chart.legend)
         if chart.note:

@@ -11,6 +11,8 @@ class AppMenuBar(QMenuBar):
     info_wizard_toggled = Signal(bool)
     stock_library_requested = Signal()
     strategy_library_requested = Signal()
+    portfolio_test_requested = Signal()
+    scoreboard_requested = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -41,6 +43,15 @@ class AppMenuBar(QMenuBar):
         self.strategies_action.setShortcut('Ctrl+Shift+T')
         self.strategies_action.setToolTip('Every saved strategy: browse, try one on a stock, or create a template')
         self.strategies_action.triggered.connect(self.strategy_library_requested)
+        self.portfolio_test_action = tools_menu.addAction('&Portfolio Test…')
+        self.portfolio_test_action.setToolTip('Test a yearly rule across many stocks: each January, move into the '
+                                              'biggest winners of the year before, against buying and holding the '
+                                              'same stocks')
+        self.portfolio_test_action.triggered.connect(self.portfolio_test_requested)
+        self.scoreboard_action = tools_menu.addAction('Strategy S&coreboard…')
+        self.scoreboard_action.setToolTip('Every strategy on every stored stock: which ones reliably beat buying and '
+                                          'holding, and whether the best one stays best on later data')
+        self.scoreboard_action.triggered.connect(self.scoreboard_requested)
 
     def set_info_checked(self, checked: bool) -> None:
         """Show the checkbox state without reporting it as a user choice."""

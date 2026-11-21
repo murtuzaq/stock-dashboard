@@ -100,6 +100,37 @@ strategies. Pick one to read its rules and act on it: *Backtest on <the stock on
 is copied first), *Copy to another stock…*, *Save to Library*, *Edit…*, *Delete…*. **+ New template…** opens the
 Strategy Builder for a template that works on any stock; when you save or cancel, you are back in the library.
 
+**Compare on all stocks…** tests the selected strategy on **every stock in the local database** at once, with
+$10,000 per stock, using the candle size (1D, 1W ...) and range selected at the top and under the chart when you press
+it. A page replaces the library with one row per stock: end value, return, buy & hold, the difference in points,
+trades, win rate and max drawdown, sorted best first; click a column title to re-sort (by number), double-click a
+row to open that stock with the strategy. It reads only the stored prices (nothing is downloaded: add or update
+stocks under Tools > Stocks > Download / update), runs in the background with a progress bar and **Stop**, and
+**Re-run** repeats it after you change the candle size or range. Back returns to the strategies.
+
+**Tools > Portfolio Test…** tests a rule that works on a whole portfolio, not one stock: **every January, move the
+money into the biggest winners of the previous calendar year**. Pick the stocks (all stocks in the database, or a saved
+portfolio), how many winners to hold (default 10, equal money in each) and the first year, then Run. $10,000 is
+invested on the first trading day of that January and rotated each January after it. The chart compares it with three
+baselines from the same money on the same day: **buying and holding the original stocks** (never changed),
+**holding all the stocks equally and rebalancing each January** (this separates "picking winners" from "rebalancing"),
+and the S&P 500. Hover a line for its yearly return, drawdown and best and worst year. A table shows each January's
+picks and how they did, a sentence says how much of the result came from the single best year, and "next January's
+picks" lists the current leaders. It uses only the stored prices. **Read the result carefully:** the database holds
+today's survivors, many of them today's winners, so every line looks better than it would have in real time, and prices
+only (no dividends, taxes or fees beyond slippage); compare the lines with each other, not with the index.
+
+**Tools > Strategy Scoreboard…** puts every saved strategy against every stored stock (with the candle size and range
+selected in the main window, $10,000 per test, stored prices only) and answers "which strategy is best, and can I trust
+it?". Press **Run** (about 1½ minutes for 13 strategies on 100+ stocks; progress bar and **Stop**; finished stocks are
+remembered, so running again is instant). Three sortable tables: **Strategies** (how many stocks each beat buy & hold
+on, the win percentage, and how far ahead or behind the middle stock was; click one to see only the stocks where it was
+best), **Best strategy per stock** (with its margin over buy & hold and the runner-up; double-click to open the stock),
+and an **out-of-sample check**: the range is split in time, the strategy that did best in the first 60% is applied to the
+last 40%, and the page says how often it still beat buy & hold, next to how often a randomly chosen strategy did. If the
+picked strategy is not clearly above the random one, "the best strategy" was mostly luck. The same caveats apply: the best
+of several tries is partly luck and the stocks are survivors.
+
 Each library strategy says **what it does**, its **style** (trend following, mean reversion ...), **why it can work**,
 what to **watch out for**, and **references** (books and peer-reviewed papers). Built-in templates:
 

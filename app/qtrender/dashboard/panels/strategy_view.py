@@ -67,6 +67,7 @@ class StrategyView(QWidget):
         layout.addLayout(self._build_settings())
         self.cards = InfoLabel('strategy summary')
         self.cards.setObjectName('indicatorLegend')
+        self.cards.setWordWrap(True)  # a long summary wraps instead of setting a minimum window width
         layout.addWidget(self.cards)
 
         split = QSplitter(Qt.Orientation.Vertical)

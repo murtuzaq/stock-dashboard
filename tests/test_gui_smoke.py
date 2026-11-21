@@ -484,10 +484,11 @@ def test_overview_without_a_profile_still_shows_the_strategy_comparison(window, 
 
 # --- Tools menu ----------------------------------------------------------------------------------------------
 
-def test_library_menu_has_stocks_and_strategies(window):
+def test_tools_menu_has_stocks_strategies_and_portfolio_test(window):
     library_menu = window.menu.actions()[2].menu()
     assert library_menu.title() == '&Tools'
-    assert [a.text() for a in library_menu.actions()] == ['&Stocks…', 'S&trategies…']
+    assert [a.text() for a in library_menu.actions()] == ['&Stocks…', 'S&trategies…', '&Portfolio Test…',
+                                                    'Strategy S&coreboard…']
 
 
 def test_stock_library_lists_local_stocks_and_adds_one_to_a_portfolio(window):
@@ -553,7 +554,8 @@ def test_strategy_library_backtests_a_template_on_the_stock_on_screen(window):
     panel = window.strategy_library_panel
     panel.items[template.id].setSelected(True)
     buttons = [panel.buttons.itemAt(i).widget() for i in range(panel.buttons.count()) if panel.buttons.itemAt(i).widget()]
-    assert [b.text() for b in buttons] == ['Backtest on TEST', 'Copy to another stock…', 'Edit…', 'Delete…']
+    assert [b.text() for b in buttons] == ['Backtest on TEST', 'Compare on all stocks…', 'Copy to another stock…',
+                                           'Edit…', 'Delete…']
     buttons[0].click()
     assert window.controller.strategy_id == template.id and window.controller.shown == ['strategy']
 
@@ -782,3 +784,241 @@ def test_stock_library_buy_and_hold_columns_sort_by_number_and_follow_the_chart_
 
     window.view_area.range_selected.emit('Max')  # the chart's range button: the library follows it
     assert column(7) == {'IBM': '+18.0%', 'TEST': '+200.0%'} and 'all time' in window.stock_library_panel.count.text()
+
+
+# --- the window must never ask for more room than a screen has (the Done button went off the bottom) -------------
+
+def test_the_window_does_not_demand_more_than_a_screen_at_start_up_or_with_a_side_panel_open(window):
+    from PySide6.QtWidgets import QApplication
+    QApplication.processEvents()
+    start = window.minimumSizeHint()
+    assert start.height() < 700 and start.width() < 1100  # it was 1357 high before: past the bottom of a 1080p screen
+
+    window.resize(1400, 850)
+    window.menu.stocks_action.trigger()
+    QApplication.processEvents()
+    assert window.side_panel.stack.minimumSizeHint().width() <= 700
+    window.menu.strategies_action.trigger()  # switching pages must not grow it either
+    QApplication.processEvents()
+    window.menu.stocks_action.trigger()
+    QApplication.processEvents()
+    done = window.stock_library_panel.done_button
+    assert done.mapTo(window, done.rect().bottomLeft()).y() <= window.height()  # the Done button is on screen
+    assert window.height() <= 850  # and the window did not grow to make room
+
+
+def test_the_done_button_stays_visible_with_charts_open_and_a_long_comparison_legend(window):
+    from PySide6.QtWidgets import QApplication
+    two_strategies_for_test()
+    window.explorer_controller.add_symbol('TEST')
+    window.explorer_controller.refresh_strategies()
+    window.resize(1400, 850)
+    window.explorer.clearSelection()
+    for item in strategy_rows(window).values():
+        item.setSelected(True)  # two strategies: the comparison chart and its legend
+    window.menu.stocks_action.trigger()
+    QApplication.processEvents()
+    done = window.stock_library_panel.done_button
+    assert done.isVisible() and done.mapTo(window, done.rect().bottomLeft()).y() <= window.height() <= 850
+
+
+# --- Strategy Library > Compare on all stocks -------------------------------------------------------------------
+
+def open_compare_for_a_template(window, returns):
+    """Select a library template and press 'Compare on all stocks…', with fake prices and fake backtest results."""
+    from types import SimpleNamespace
+    from PySide6.QtWidgets import QApplication
+    from strategy import Condition, Exits, RuleGroup, Strategy
+    template = Strategy('Template', RuleGroup('all', [Condition(Operand('close'), 'above', Operand('sma'))]),
+                        RuleGroup('any', []), Exits(stop_loss_pct=5))
+    repository.save(template)
+    stocks = pd.DataFrame({'symbol': list(returns), 'first_date': pd.to_datetime(['2020-01-01'] * len(returns)),
+                           'last_date': pd.to_datetime(['2025-12-01'] * len(returns)),
+                           'last_close': [10.0] * len(returns)})
+
+    def backtest(strategy, candles, benchmark, start, symbol):
+        ret = returns[symbol]
+        return SimpleNamespace(metrics={'end_capital': 10_000 * (1 + ret / 100), 'return_pct': ret,
+                                        'buy_hold_return_pct': 5.0, 'trades': 3, 'wins': 2, 'losses': 1,
+                                        'win_rate_pct': 66.0, 'max_drawdown_pct': -10.0, 'time_in_market_pct': 50.0})
+    controller = window.compare_controller
+    controller.stocks_source, controller.names_source = (lambda: stocks), (lambda: {'AAA': 'Alpha'})
+    controller.series_source, controller.backtest = (lambda symbol: random_walk(300, seed=1)), backtest
+    window.menu.strategies_action.trigger()
+    window.strategy_library_panel.items[template.id].setSelected(True)
+    buttons = [window.strategy_library_panel.buttons.itemAt(i).widget() for i in range(window.strategy_library_panel.buttons.count())
+               if window.strategy_library_panel.buttons.itemAt(i).widget()]
+    next(b for b in buttons if b.text() == 'Compare on all stocks…').click()
+    QApplication.processEvents()
+    return template
+
+
+def test_compare_on_all_stocks_lists_every_stock_sortable_by_number_and_goes_back(window):
+    from PySide6.QtCore import Qt
+    window.header.timeframe_changed.emit('1W')  # the candle size selected at the top is the one it uses
+    window.view_area.range_selected.emit('5Y')
+    open_compare_for_a_template(window, {'AAA': 9.0, 'BBB': 100.0, 'CCC': -5.0})
+    panel = window.compare_panel
+    assert window.side_panel.windowTitle() == 'Strategy vs All Stocks' and panel.isVisible()
+    assert window.strategy_library_panel.isHidden() or not window.strategy_library_panel.isVisible()
+    assert panel.header.text() == 'Template · 1W candles · past 5 years · $10,000 per stock'
+    table = panel.table
+    assert [table.item(r, 0).text() for r in range(table.rowCount())] == ['BBB', 'AAA', 'CCC']  # best first
+    assert 'Beat buy & hold on 2 of 3 stocks' in panel.summary.text()
+    table.sortByColumn(3, Qt.SortOrder.AscendingOrder)  # by number: -5.0%, +9.0%, +100.0% (text order would differ)
+    assert [table.item(r, 3).text() for r in range(table.rowCount())] == ['-5.0%', '+9.0%', '+100.0%']
+
+    panel.back_button.click()  # back to the strategies
+    assert window.side_panel.windowTitle() == 'Strategy Library' and window.strategy_library_panel.isVisible()
+
+
+def test_double_clicking_a_result_opens_that_stock_with_the_template_selected(window):
+    template = open_compare_for_a_template(window, {'AAA': 9.0, 'BBB': 100.0})
+    window.compare_panel.table.cellDoubleClicked.emit(0, 0)  # the best one: BBB
+    assert window.controller.symbol == 'BBB' and window.controller.strategy_id == template.id
+
+
+def test_closing_the_dock_stops_a_comparison_and_the_page_does_not_enlarge_the_window(window):
+    from PySide6.QtWidgets import QApplication
+    window.resize(1400, 850)
+    open_compare_for_a_template(window, {'AAA': 9.0, 'BBB': 100.0})
+    QApplication.processEvents()
+    back = window.compare_panel.back_button
+    assert back.mapTo(window, back.rect().bottomLeft()).y() <= window.height() <= 850  # buttons stay on screen
+    window.compare_controller._stop.clear()
+    window.side_panel.hide()  # the dock's close button
+    assert window.compare_controller._stop.is_set()
+
+
+# --- Tools > Portfolio Test -------------------------------------------------------------------------------------
+
+def open_portfolio_test_with_fake_prices(window):
+    """Open the page and point it at made-up prices (four stocks, 2020-2023) with no slippage."""
+    from datetime import date
+    from PySide6.QtWidgets import QApplication
+    from strategy import Costs
+    from test_rotation import market
+    prices = market()
+    controller = window.portfolio_test_controller
+    controller.stocks_source = lambda: pd.DataFrame({'symbol': sorted(prices)})
+    controller.series_source = lambda symbol: prices.get(symbol, pd.DataFrame())
+    controller.costs = Costs(capital=10_000, commission=0.0, slippage_pct=0.0)
+    window.menu.portfolio_test_action.trigger()
+    QApplication.processEvents()
+    return window.portfolio_test_panel, date.today().year
+
+
+def test_tools_portfolio_test_opens_a_page_with_defaults_and_the_survivorship_warning(window):
+    panel, this_year = open_portfolio_test_with_fake_prices(window)
+    assert window.side_panel.isVisible() and window.side_panel.windowTitle() == 'Portfolio Test' and panel.isVisible()
+    assert [panel.universe.itemText(i) for i in range(panel.universe.count())] == ['All stocks in my database']
+    assert panel.count.value() == 10 and panel.first_year.value() == this_year - 10
+    assert 'survivors' in panel.warning.text()
+
+
+def test_running_the_portfolio_test_draws_the_lines_and_fills_both_tables(window):
+    panel, _ = open_portfolio_test_with_fake_prices(window)
+    panel.count.setValue(2)
+    panel.first_year.setValue(2021)
+    panel.run_button.click()
+    plot = panel.chart.plot_widget
+    assert len(plot.lines) == 3 and plot.chart.series[0].label == "Top 2 of last year's winners"
+    assert panel.lines_table.rowCount() == 3 and panel.years_table.rowCount() == 3
+    assert panel.years_table.item(0, 1).text() == 'A, D' and panel.years_table.item(0, 2).text() == '-5%'
+    assert 'beat the all-stock average' in panel.summary.text() and 'leaders of 2023 so far' in panel.next_picks.text()
+    assert panel.run_button.isEnabled()
+
+
+def test_a_first_year_that_cannot_work_shows_the_reason_and_clears_the_old_result(window):
+    panel, _ = open_portfolio_test_with_fake_prices(window)
+    panel.count.setValue(2)
+    panel.first_year.setValue(2021)
+    panel.run_button.click()
+    panel.first_year.setValue(2018)  # before the prices start
+    panel.run_button.click()
+    assert 'earliest year that can work with these stocks is 2021' in panel.notice.text()
+    assert panel.years_table.rowCount() == 0 and panel.summary.text() == ''
+
+
+def test_the_portfolio_test_page_keeps_the_done_button_on_screen_and_the_window_the_same_size(window):
+    from PySide6.QtWidgets import QApplication
+    window.resize(1400, 850)
+    panel, _ = open_portfolio_test_with_fake_prices(window)
+    panel.count.setValue(2)
+    panel.first_year.setValue(2021)
+    panel.run_button.click()
+    QApplication.processEvents()
+    done = panel.done_button
+    assert done.mapTo(window, done.rect().bottomLeft()).y() <= window.height() <= 850
+    assert window.side_panel.stack.minimumSizeHint().width() <= 700
+    panel.done_button.click()
+    assert not window.side_panel.isVisible()
+
+
+# --- Tools > Strategy Scoreboard --------------------------------------------------------------------------------
+
+def open_scoreboard_with_fakes(window):
+    """Open the page with two strategies, two stocks and fake backtests (Alpha always +30%, Beta +5%, hold +10%)."""
+    from types import SimpleNamespace
+    from PySide6.QtWidgets import QApplication
+    from strategy import RuleGroup, Strategy
+    strategies = [Strategy('Alpha rule', RuleGroup('all', []), RuleGroup('any', [])),
+                  Strategy('Beta rule', RuleGroup('all', []), RuleGroup('any', []))]
+    stocks = pd.DataFrame({'symbol': ['AAA', 'BBB'], 'first_date': pd.to_datetime(['2020-01-01'] * 2),
+                           'last_date': pd.to_datetime(['2020-05-20'] * 2), 'last_close': [10.0, 20.0]})
+
+    def backtest(strategy, candles, benchmark, start, symbol):
+        ret = 30.0 if strategy.name == 'Alpha rule' else 5.0
+        return SimpleNamespace(metrics={'return_pct': ret, 'buy_hold_return_pct': 10.0, 'trades': 3,
+                                        'max_drawdown_pct': -8.0})
+    controller = window.scoreboard_controller
+    controller.strategies_source, controller.stocks_source = (lambda: strategies), (lambda: stocks)
+    controller.series_source, controller.backtest = (lambda symbol: random_walk(100, seed=1)), backtest
+    window.menu.scoreboard_action.trigger()
+    QApplication.processEvents()
+    return window.scoreboard_panel, strategies
+
+
+def test_tools_scoreboard_opens_a_page_and_run_fills_the_three_tables(window):
+    panel, strategies = open_scoreboard_with_fakes(window)
+    assert window.side_panel.isVisible() and window.side_panel.windowTitle() == 'Strategy Scoreboard'
+    assert panel.board_table.rowCount() == 0 and panel.run_button.isEnabled()
+    panel.run_button.click()
+    assert panel.board_table.rowCount() == 2 and panel.best_table.rowCount() == 2
+    assert panel.board_table.item(0, 0).text() == 'Alpha rule'  # sorted: the most reliable first
+    assert panel.best_table.item(0, 1).text() == 'Alpha rule' and panel.best_table.item(0, 4).text() == '+20.0 pts'
+    assert panel.out_table.rowCount() == 2 and 'Out-of-sample check' in panel.out_summary.text()
+    assert 'survivors' in panel.summary.text() and panel.run_button.isEnabled() and not panel.stop_button.isEnabled()
+
+
+def test_the_scoreboards_numeric_columns_sort_by_number(window):
+    from PySide6.QtCore import Qt
+    panel, _ = open_scoreboard_with_fakes(window)
+    panel.run_button.click()
+    panel.board_table.sortByColumn(3, Qt.SortOrder.AscendingOrder)  # median vs hold: Beta -5, Alpha +20
+    assert [panel.board_table.item(r, 0).text() for r in range(2)] == ['Beta rule', 'Alpha rule']
+
+
+def test_clicking_a_strategy_shows_only_its_stocks_and_a_double_click_opens_a_stock(window):
+    panel, strategies = open_scoreboard_with_fakes(window)
+    panel.run_button.click()
+    beta_row = next(r for r in range(2) if panel.board_table.item(r, 0).text() == 'Beta rule')
+    panel.board_table.selectRow(beta_row)
+    assert all(panel.best_table.isRowHidden(r) for r in range(2)) and panel.show_all.isEnabled()  # Beta was never best
+    panel.show_all.click()
+    assert not any(panel.best_table.isRowHidden(r) for r in range(2))
+    panel.best_table.cellDoubleClicked.emit(0, 0)
+    assert window.controller.symbol in ('AAA', 'BBB')
+
+
+def test_the_scoreboard_page_keeps_the_done_button_on_screen_and_the_window_the_same_size(window):
+    from PySide6.QtWidgets import QApplication
+    window.resize(1400, 850)
+    panel, _ = open_scoreboard_with_fakes(window)
+    panel.run_button.click()
+    QApplication.processEvents()
+    done = panel.done_button
+    assert done.mapTo(window, done.rect().bottomLeft()).y() <= window.height() <= 850
+    assert window.side_panel.stack.minimumSizeHint().width() <= 700
+    done.click()
+    assert not window.side_panel.isVisible()

@@ -49,11 +49,12 @@ class DownloadPanel(QWidget):
         self.search.symbol_chosen.connect(self.symbol_picked)
         layout.addWidget(self.search)
 
-        self.only_pending = QCheckBox('Only show stocks not yet downloaded or out of date')
+        self.only_pending = QCheckBox('Hide stocks that are up to date')
         self.only_pending.toggled.connect(self.only_pending_toggled)
         layout.addWidget(self.only_pending)
         self.totals = QLabel()
         self.totals.setObjectName('barLabel')
+        self.totals.setWordWrap(True)
         layout.addWidget(self.totals)
 
         self.table = QTableWidget(0, len(COLUMNS))

@@ -8,30 +8,20 @@ from collections.abc import Callable
 
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QHideEvent
-from PySide6.QtWidgets import (QHeaderView, QLabel, QMenu, QPushButton, QTableWidget, QTableWidgetItem, QTabWidget,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QHeaderView, QLabel, QMenu, QPushButton, QTableWidget,
+                               QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
 
 from core.common.background import BackgroundLoader
 from core.library.stocks import COLUMNS, StockRow
 from core.strategies.service import MenuEntry
 from qtrender.downloads.download_panel import DownloadPanel
+from qtrender.numeric_item import SORT_ROLE, NumberItem
 from qtrender.searchbar.bar import SearchBar
 
 RIGHT = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
 SYMBOL_ROLE = Qt.ItemDataRole.UserRole
-SORT_ROLE = Qt.ItemDataRole.UserRole + 1
 HOLD_COLUMN_TIP = ('What $10,000 would have become by buying at the start of the range selected under the chart and '
                    'holding to the latest close. Click the header to sort by it.')
-
-
-class NumberItem(QTableWidgetItem):
-    """A cell shown as text ($12,340.00) that sorts by its number, so $9,000 comes before $12,000."""
-
-    def __lt__(self, other: QTableWidgetItem) -> bool:
-        mine, theirs = self.data(SORT_ROLE), other.data(SORT_ROLE)
-        if mine is None or theirs is None:
-            return super().__lt__(other)
-        return mine < theirs
 
 
 def fill_menu(menu: QMenu, entries: list[MenuEntry | None], chosen: Callable[[MenuEntry], None]) -> None:
@@ -85,11 +75,12 @@ class StockLibraryPanel(QWidget):
 
         self.count = QLabel()
         self.count.setObjectName('barLabel')
+        self.count.setWordWrap(True)  # it names the range, so it can be long: wrap rather than widen the dock
         stocks.addWidget(self.count)
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setObjectName('historyTable')
         self.table.setHorizontalHeaderLabels(COLUMNS)
-        for column in (len(COLUMNS) - 2, len(COLUMNS) - 1):
+        for column in (COLUMNS.index('Buy & hold $10K'), COLUMNS.index('Return')):
             self.table.horizontalHeaderItem(column).setToolTip(HOLD_COLUMN_TIP)
         self.table.verticalHeader().hide()
         header = self.table.horizontalHeader()
@@ -158,7 +149,6 @@ class StockLibraryPanel(QWidget):
         self.table.setSortingEnabled(True)
         noun = 'stock' if len(rows) == 1 else 'stocks'
         self.count.setText(f'{len(rows)} {noun} in the library' + (f' · {range_note}' if range_note else ''))
-
     def show_notice(self, text: str) -> None:
         self.notice.setText(text)
 

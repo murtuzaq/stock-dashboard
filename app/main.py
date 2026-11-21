@@ -18,8 +18,11 @@ from core.downloads.controller import DownloadController, PacingProfile
 from core.explorer.controller import ExplorerController
 from core.learn.controller import InfoController
 from core.learn.preferences import Preferences
+from core.library.compare import CompareController
 from core.library.stocks import StockLibraryController
 from core.library.strategies import StrategyLibraryController
+from core.portfolio_test.controller import PortfolioTestController
+from core.scoreboard.controller import ScoreboardController
 from core.portfolios.add_stock import AddStockController
 from core.portfolios.controller import PortfolioController
 from core.portfolios.service import PortfolioService
@@ -27,7 +30,7 @@ from core.strategies.controller import StrategyController
 from core.strategies.service import StrategyService
 from learn import TopicLibrary, load_library
 from portfolio import Portfolio
-from prices import load_daily, load_financials, refresh
+from prices import load_daily, load_financials, load_stored, refresh
 from prices.store import stored_stocks
 from search import Catalog, company_names, load_catalog
 from strategy.buy_hold import BuyHold, stock_buy_hold
@@ -42,9 +45,12 @@ from qtrender.learn.info_mode import InfoMode
 from qtrender.learn.info_panel import MINIMUM_WIDTH as INFO_MINIMUM_WIDTH, InfoDock, InfoPanel
 from qtrender.learn.request_dialog import QtInfoDialogs, QtPreferences
 from qtrender.learn.view import QtInfoView
+from qtrender.library.compare_panel import ComparePanel
 from qtrender.library.stock_library_panel import StockLibraryPanel
 from qtrender.library.strategy_library_panel import StrategyLibraryPanel
 from qtrender.menu_bar import AppMenuBar
+from qtrender.portfolio_test.portfolio_test_panel import PortfolioTestPanel
+from qtrender.scoreboard.scoreboard_panel import ScoreboardPanel
 from qtrender.portfolios.add_stock_panel import AddStockPanel
 from qtrender.searchbar.bar import SearchBar
 from qtrender.side_panel import MINIMUM_WIDTH, SideDock
@@ -61,7 +67,8 @@ class MainWindow(QMainWindow):
                  names_source: Callable[[], dict[str, str]] = company_names,
                  catalog_source: Callable[[], Catalog] = load_catalog, download_pacing: PacingProfile | None = None,
                  download_refresh: Callable[[str], str] = refresh,
-                 buy_hold_source: Callable[[pd.DataFrame, str], dict[str, BuyHold]] = stock_buy_hold) -> None:
+                 buy_hold_source: Callable[[pd.DataFrame, str], dict[str, BuyHold]] = stock_buy_hold,
+                 series_source: Callable[[str], pd.DataFrame] = load_stored) -> None:
         """The sources, loader, remembered settings and topic library can be replaced (tests use canned ones)."""
         super().__init__()
         self.setWindowTitle('Stock Dashboard')
@@ -86,11 +93,17 @@ class MainWindow(QMainWindow):
         self.add_stock_panel = AddStockPanel(loader)  # another page: adding stocks to a portfolio
         self.stock_library_panel = StockLibraryPanel(loader)  # Tools > Stocks (with its Download / update tab)
         self.strategy_library_panel = StrategyLibraryPanel()  # Tools > Strategies
+        self.compare_panel = ComparePanel()  # Tools > Strategies > Compare on all stocks
+        self.portfolio_test_panel = PortfolioTestPanel()  # Tools > Portfolio Test
+        self.scoreboard_panel = ScoreboardPanel()  # Tools > Strategy Scoreboard
         self.side_panel = SideDock()  # a dock on the right: one page at a time, shown only when needed
         self.side_panel.add_page(self.wizard, 'Strategy Builder')
         self.side_panel.add_page(self.add_stock_panel, 'Add Stock')
         self.side_panel.add_page(self.stock_library_panel, 'Stock Library')
         self.side_panel.add_page(self.strategy_library_panel, 'Strategy Library')
+        self.side_panel.add_page(self.compare_panel, 'Strategy vs All Stocks')
+        self.side_panel.add_page(self.portfolio_test_panel, 'Portfolio Test')
+        self.side_panel.add_page(self.scoreboard_panel, 'Strategy Scoreboard')
         self._return_page: QWidget | None = None  # the library page to go back to when the wizard closes
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.side_panel)
         self.info_panel = InfoPanel()
@@ -125,6 +138,17 @@ class MainWindow(QMainWindow):
         self.download_controller = DownloadController(
             self.stock_library_panel.download_panel, loader, catalog_source, stored_stocks_source,
             lambda: self._portfolio_symbols(portfolio_service), download_pacing, download_refresh)
+        self.compare_controller = CompareController(
+            self.compare_panel, loader, strategy_service, self.explorer_controller,
+            lambda: (self.controller.candle_size, self.controller.range), stored_stocks_source, names_source,
+            series_source)
+        self.strategy_library_controller.on_compare = self.open_compare
+        self.portfolio_test_controller = PortfolioTestController(
+            self.portfolio_test_panel, loader, lambda: self._portfolios_by_name(portfolio_service), stored_stocks_source,
+            series_source)
+        self.scoreboard_controller = ScoreboardController(
+            self.scoreboard_panel, loader, strategy_service.all_strategies, self.explorer_controller,
+            lambda: (self.controller.candle_size, self.controller.range), stored_stocks_source, series_source)
         self.info_controller = InfoController(
             QtInfoView(self.info_panel, self.info_mode, self.menu, self.show_info_dock, self.info_dock.hide),
             library, QtInfoDialogs(self), preferences, context=self._info_context)
@@ -141,6 +165,8 @@ class MainWindow(QMainWindow):
         self.menu.exit_requested.connect(self.close)
         self.menu.stock_library_requested.connect(self.open_stock_library)
         self.menu.strategy_library_requested.connect(self.open_strategy_library)
+        self.menu.portfolio_test_requested.connect(self.open_portfolio_test)
+        self.menu.scoreboard_requested.connect(self.open_scoreboard)
         self.menu.info_wizard_toggled.connect(self.info_controller.set_enabled)
         self.info_panel.back_requested.connect(self.info_controller.back)
         self.info_panel.forward_requested.connect(self.info_controller.forward)
@@ -181,6 +207,17 @@ class MainWindow(QMainWindow):
         download.stop_requested.connect(self.download_controller.stop)
         self.stock_library_panel.hidden.connect(self.download_controller.stop)  # a download only runs while it is open
         self.download_controller.on_ended = self.stock_library_controller.refresh  # new stocks appear in its list
+        self.portfolio_test_panel.universe_chosen.connect(self.portfolio_test_controller.choose_universe)
+        self.portfolio_test_panel.run_requested.connect(self.portfolio_test_controller.run)
+        self.portfolio_test_panel.done_requested.connect(self.side_panel.dismiss)
+        self.scoreboard_panel.run_requested.connect(self.scoreboard_controller.start)
+        self.scoreboard_panel.stop_requested.connect(self.scoreboard_controller.stop)
+        self.scoreboard_panel.row_opened.connect(self.scoreboard_controller.open_stock)
+        self.scoreboard_panel.done_requested.connect(self.side_panel.dismiss)
+        self.compare_panel.back_requested.connect(lambda: self.show_panel(self.strategy_library_panel))
+        self.compare_panel.rerun_requested.connect(self.compare_controller.rerun)
+        self.compare_panel.stop_requested.connect(self.compare_controller.stop)
+        self.compare_panel.row_opened.connect(self.compare_controller.open_stock)
         self.info_controller.restore()  # apply the remembered View > Info Wizard setting
 
     def open_add_stock(self, portfolio: Portfolio) -> None:
@@ -197,6 +234,28 @@ class MainWindow(QMainWindow):
             self.download_controller.start_panel()
             self.show_panel(self.stock_library_panel)
 
+    def open_compare(self, strategy_id: str) -> None:
+        """Strategy Library > Compare on all stocks…: the results replace the library page, with a Back button."""
+        self.compare_controller.start(strategy_id)
+        self.show_panel(self.compare_panel)
+
+    def open_portfolio_test(self) -> None:
+        """Tools > Portfolio Test."""
+        if self._may_replace_wizard('open the Portfolio Test instead'):
+            self.portfolio_test_controller.start_panel()
+            self.show_panel(self.portfolio_test_panel)
+
+    def open_scoreboard(self) -> None:
+        """Tools > Strategy Scoreboard: it shows the page; Run starts the test."""
+        if self._may_replace_wizard('open the Strategy Scoreboard instead'):
+            self.show_panel(self.scoreboard_panel)
+
+    @staticmethod
+    def _portfolios_by_name(portfolio_service: PortfolioService) -> dict[str, list[str]]:
+        """Every saved portfolio's stocks, by portfolio name."""
+        portfolios = (portfolio_service.get(saved.id) for saved in portfolio_service.saved())
+        return {portfolio.name: list(portfolio.symbols) for portfolio in portfolios if portfolio}
+
     def open_strategy_library(self) -> None:
         """Tools > Strategies."""
         if self._may_replace_wizard('open the Strategy Library instead'):
@@ -211,6 +270,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self.download_controller.stop()  # a download only runs while the app and its panel are open
+        self.compare_controller.stop()
+        self.scoreboard_controller.stop()
         super().closeEvent(event)
 
     def _may_replace_wizard(self, instead: str) -> bool:

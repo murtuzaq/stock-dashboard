@@ -33,7 +33,7 @@ class FakeStockView:
         self.title, self.rows, self.notices, self.closed = '', [], [], False
 
     def show_title(self, text): self.title = text
-    def show_stocks(self, rows, range_note=''): self.rows, self.range_note = rows, range_note
+    def show_stocks(self, rows, range_note=""): self.rows, self.range_note = rows, range_note
     def show_notice(self, text): self.notices.append(text)
     def close(self): self.closed = True
 
@@ -155,11 +155,12 @@ def test_buttons_depend_on_the_strategy_and_the_stock_on_screen():
     controller, view, *_ = make_strategies(current='NKE')
     controller.start()
     controller.select(template.id)
-    assert [a.text for a in view.actions] == ['Backtest on NKE', 'Copy to another stock…', 'Edit…', 'Delete…']
+    assert [a.text for a in view.actions] == ['Backtest on NKE', 'Compare on all stocks…', 'Copy to another stock…',
+                                              'Edit…', 'Delete…']
     assert 'BUY when Close is above SMA 50d' in view.detail.description
     controller.select(own.id)
-    assert [a.text for a in view.actions] == ['Copy to NKE and backtest', 'Copy to another stock…', 'Save to Library',
-                                              'Edit…', 'Delete…']
+    assert [a.text for a in view.actions] == ['Copy to NKE and backtest', 'Compare on all stocks…',
+                                              'Copy to another stock…', 'Save to Library', 'Edit…', 'Delete…']
     nothing_on_screen = make_strategies(current=None)[0]
     nothing_on_screen.start()
     assert nothing_on_screen.actions_for(nothing_on_screen.items[own.id])[0].text == 'Backtest on IBM'
@@ -239,3 +240,4 @@ def test_the_library_names_the_range_and_follows_the_chart_range():
     chart_range[0] = '5Y'
     controller.set_range('5Y')
     assert view.range_note == 'buy & hold of $10,000 over the past 5 years' and view.rows[0].cells[7].text == '+30.0%'
+
